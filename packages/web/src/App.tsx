@@ -4,6 +4,9 @@ import { LoginPage } from '@/pages/auth/LoginPage';
 import { ForgotPasswordPage } from '@/pages/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from '@/pages/auth/ResetPasswordPage';
 import { ChangePasswordPage } from '@/pages/auth/ChangePasswordPage';
+import { DashboardTablePage } from '@/pages/dashboard/DashboardTablePage';
+import { DashboardCardsPage } from '@/pages/dashboard/DashboardCardsPage';
+import { ProfessionalDashPage } from '@/pages/dashboard/ProfessionalDashPage';
 import type { ReactNode } from 'react';
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
@@ -21,23 +24,6 @@ function GuestRoute({ children }: { children: ReactNode }) {
   return <Navigate to="/dashboard" replace />;
 }
 
-function PlaceholderPage({ title }: { title: string }) {
-  const logout = useAuthStore((s) => s.logout);
-  return (
-    <div className="min-h-screen bg-muted/40 flex items-center justify-center">
-      <div className="bg-card p-8 rounded-lg shadow-md max-w-lg w-full text-center space-y-4">
-        <h1 className="text-2xl font-bold">{title}</h1>
-        <p className="text-muted-foreground">Tela em construcao</p>
-        <button
-          onClick={logout}
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors underline"
-        >
-          Sair
-        </button>
-      </div>
-    </div>
-  );
-}
 
 export function App() {
   return (
@@ -49,9 +35,9 @@ export function App() {
 
       {/* Protected routes */}
       <Route path="/change-password" element={<ProtectedRoute><ChangePasswordPage /></ProtectedRoute>} />
-      <Route path="/" element={<ProtectedRoute><PlaceholderPage title="Dashboard Admin" /></ProtectedRoute>} />
-      <Route path="/dashboard" element={<ProtectedRoute><PlaceholderPage title="Dashboard Profissional" /></ProtectedRoute>} />
-      <Route path="/dashboard/cards" element={<ProtectedRoute><PlaceholderPage title="Dashboard Cards" /></ProtectedRoute>} />
+      <Route path="/" element={<ProtectedRoute><DashboardTablePage /></ProtectedRoute>} />
+      <Route path="/dashboard" element={<ProtectedRoute><ProfessionalDashPage /></ProtectedRoute>} />
+      <Route path="/dashboard/cards" element={<ProtectedRoute><DashboardCardsPage /></ProtectedRoute>} />
 
       {/* Catch-all */}
       <Route path="*" element={<Navigate to="/login" replace />} />
