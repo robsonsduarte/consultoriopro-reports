@@ -1,0 +1,35 @@
+import 'dotenv/config';
+import { serve } from '@hono/node-server';
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import { logger } from 'hono/logger';
+import { health } from './routes/health.js';
+import { auth } from './routes/auth.js';
+
+const app = new Hono();
+
+// Middleware global
+app.use('*', logger());
+app.use('*', cors({
+  origin: ['http://localhost:5173', 'http://localhost:3000'],
+  credentials: true,
+}));
+
+// Routes
+app.route('/health', health);
+app.route('/auth', auth);
+
+// 404
+app.notFound((c) => c.json({ success: false, error: 'Rota nao encontrada' }, 404));
+
+// Error handler
+app.onError((err, c) => {
+  console.error('Unhandled error:', err);
+  return c.json({ success: false, error: 'Erro interno do servidor' }, 500);
+});
+
+const port = Number(process.env.API_PORT) || 3001;
+
+console.log(`[cpro-api] Servidor rodando em http://localhost:${port}`);
+
+serve({ fetch: app.fetch, port });

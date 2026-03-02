@@ -1,0 +1,20 @@
+{
+  "name": "consultoriopro-ts",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --parallel --filter './packages/*' dev",
+    "dev:api": "pnpm --filter @cpro/api dev",
+    "dev:web": "pnpm --filter @cpro/web dev",
+    "build": "pnpm --filter @cpro/shared build && pnpm --parallel --filter './packages/{api,web}' build",
+    "test": "pnpm --parallel --filter './packages/*' test",
+    "db:generate": "pnpm --filter @cpro/api db:generate",
+    "db:migrate": "pnpm --filter @cpro/api db:migrate",
+    "db:studio": "pnpm --filter @cpro/api db:studio",
+    "lint": "pnpm --parallel --filter './packages/*' lint",
+    "typecheck": "pnpm --parallel --filter './packages/*' typecheck"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  }
+}
