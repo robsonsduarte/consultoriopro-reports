@@ -7,7 +7,6 @@ import {
   integer,
   numeric,
   timestamp,
-  date,
   pgEnum,
 } from 'drizzle-orm/pg-core';
 
@@ -31,6 +30,8 @@ export const users = pgTable('users', {
   apiProfessionalId: integer('api_professional_id'),
   isActive: boolean('is_active').notNull().default(true),
   mustChangePassword: boolean('must_change_password').notNull().default(true),
+  resetToken: varchar('reset_token', { length: 64 }),
+  resetTokenExpiresAt: timestamp('reset_token_expires_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

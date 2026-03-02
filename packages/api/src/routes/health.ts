@@ -6,7 +6,7 @@ const health = new Hono();
 
 health.get('/', async (c) => {
   try {
-    const result = await db.execute(sql`SELECT 1 AS ok`);
+    await db.execute(sql`SELECT 1 AS ok`);
     return c.json({
       status: 'ok',
       database: 'connected',
