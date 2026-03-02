@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Loader2, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { AuthLayout } from '@/components/layout/AuthLayout';
 import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/lib/api';
 
@@ -61,76 +62,79 @@ export function ChangePasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/40 px-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Alterar senha</CardTitle>
-          <CardDescription>
+    <AuthLayout>
+      <div className="space-y-6">
+        <div className="space-y-2">
+          <h1 className="text-2xl font-bold tracking-tight">Alterar senha</h1>
+          <p className="text-muted-foreground text-sm">
             Voce precisa alterar sua senha antes de continuar
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="currentPassword">Senha atual</Label>
-              <Input
-                id="currentPassword"
-                type="password"
-                placeholder="••••••"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                autoComplete="current-password"
-                autoFocus
-                disabled={loading}
-              />
-            </div>
+          </p>
+        </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="newPassword">Nova senha</Label>
-              <Input
-                id="newPassword"
-                type="password"
-                placeholder="••••••"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                autoComplete="new-password"
-                disabled={loading}
-              />
-            </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="currentPassword">Senha atual</Label>
+            <Input
+              id="currentPassword"
+              type="password"
+              placeholder="••••••"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              autoComplete="current-password"
+              autoFocus
+              disabled={loading}
+            />
+          </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirmar nova senha</Label>
-              <Input
-                id="confirmPassword"
-                type="password"
-                placeholder="••••••"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                autoComplete="new-password"
-                disabled={loading}
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="newPassword">Nova senha</Label>
+            <Input
+              id="newPassword"
+              type="password"
+              placeholder="••••••"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              autoComplete="new-password"
+              disabled={loading}
+            />
+          </div>
 
-            {error && (
+          <div className="space-y-2">
+            <Label htmlFor="confirmPassword">Confirmar nova senha</Label>
+            <Input
+              id="confirmPassword"
+              type="password"
+              placeholder="••••••"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              autoComplete="new-password"
+              disabled={loading}
+            />
+          </div>
+
+          {error && (
+            <div className="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2">
               <p className="text-sm text-destructive font-medium">{error}</p>
-            )}
-
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Salvando...' : 'Alterar senha'}
-            </Button>
-
-            <div className="text-center">
-              <button
-                type="button"
-                onClick={logout}
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Sair da conta
-              </button>
             </div>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+          )}
+
+          <Button type="submit" className="w-full" size="lg" disabled={loading}>
+            {loading && <Loader2 className="animate-spin" />}
+            {loading ? 'Salvando...' : 'Alterar senha'}
+          </Button>
+
+          <div className="text-center">
+            <button
+              type="button"
+              onClick={logout}
+              className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary transition-colors"
+            >
+              <LogOut className="size-3" />
+              Sair da conta
+            </button>
+          </div>
+        </form>
+      </div>
+    </AuthLayout>
   );
 }

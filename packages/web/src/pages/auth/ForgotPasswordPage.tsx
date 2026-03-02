@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
+import { Loader2, ArrowLeft, MailCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { AuthLayout } from '@/components/layout/AuthLayout';
 import { api } from '@/lib/api';
 
 export function ForgotPasswordPage() {
@@ -36,70 +37,75 @@ export function ForgotPasswordPage() {
 
   if (sent) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-muted/40 px-4">
-        <Card className="w-full max-w-sm">
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl">Email enviado</CardTitle>
-            <CardDescription>
+      <AuthLayout>
+        <div className="space-y-6 text-center">
+          <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-primary/10">
+            <MailCheck className="size-6 text-primary" />
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-2xl font-bold tracking-tight">Verifique seu email</h1>
+            <p className="text-muted-foreground text-sm">
               Se o email estiver cadastrado, voce recebera um link para redefinir sua senha.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link to="/login">
-              <Button variant="outline" className="w-full">
-                Voltar ao login
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
+            </p>
+          </div>
+          <Link to="/login">
+            <Button variant="outline" className="w-full">
+              <ArrowLeft />
+              Voltar ao login
+            </Button>
+          </Link>
+        </div>
+      </AuthLayout>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/40 px-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Esqueci minha senha</CardTitle>
-          <CardDescription>
-            Informe seu email para receber o link de recuperacao
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="seu@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoComplete="email"
-                autoFocus
-                disabled={loading}
-              />
-            </div>
+    <AuthLayout>
+      <div className="space-y-6">
+        <div className="space-y-2">
+          <h1 className="text-2xl font-bold tracking-tight">Esqueceu a senha?</h1>
+          <p className="text-muted-foreground text-sm">
+            Informe seu email e enviaremos um link para redefinir sua senha
+          </p>
+        </div>
 
-            {error && (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="seu@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              autoFocus
+              disabled={loading}
+            />
+          </div>
+
+          {error && (
+            <div className="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2">
               <p className="text-sm text-destructive font-medium">{error}</p>
-            )}
-
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Enviando...' : 'Enviar link de recuperacao'}
-            </Button>
-
-            <div className="text-center">
-              <Link
-                to="/login"
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Voltar ao login
-              </Link>
             </div>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+          )}
+
+          <Button type="submit" className="w-full" size="lg" disabled={loading}>
+            {loading && <Loader2 className="animate-spin" />}
+            {loading ? 'Enviando...' : 'Enviar link de recuperacao'}
+          </Button>
+
+          <div className="text-center">
+            <Link
+              to="/login"
+              className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary transition-colors"
+            >
+              <ArrowLeft className="size-3" />
+              Voltar ao login
+            </Link>
+          </div>
+        </form>
+      </div>
+    </AuthLayout>
   );
 }

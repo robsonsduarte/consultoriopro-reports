@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { AuthLayout } from '@/components/layout/AuthLayout';
 import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/lib/api';
 import type { AuthUser } from '@cpro/shared';
@@ -64,60 +65,63 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/40 px-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">ConsultorioPro</CardTitle>
-          <CardDescription>Entre com suas credenciais</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="seu@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoComplete="email"
-                autoFocus
-                disabled={loading}
-              />
-            </div>
+    <AuthLayout>
+      <div className="space-y-6">
+        <div className="space-y-2">
+          <h1 className="text-2xl font-bold tracking-tight">Bem-vindo de volta</h1>
+          <p className="text-muted-foreground text-sm">
+            Entre com suas credenciais para acessar o sistema
+          </p>
+        </div>
 
-            <div className="space-y-2">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="seu@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              autoFocus
+              disabled={loading}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
               <Label htmlFor="password">Senha</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-                disabled={loading}
-              />
-            </div>
-
-            {error && (
-              <p className="text-sm text-destructive font-medium">{error}</p>
-            )}
-
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Entrando...' : 'Entrar'}
-            </Button>
-
-            <div className="text-center">
               <Link
                 to="/forgot-password"
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                className="text-xs text-muted-foreground hover:text-primary transition-colors"
               >
-                Esqueci minha senha
+                Esqueceu a senha?
               </Link>
             </div>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+            <Input
+              id="password"
+              type="password"
+              placeholder="••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              disabled={loading}
+            />
+          </div>
+
+          {error && (
+            <div className="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2">
+              <p className="text-sm text-destructive font-medium">{error}</p>
+            </div>
+          )}
+
+          <Button type="submit" className="w-full" size="lg" disabled={loading}>
+            {loading && <Loader2 className="animate-spin" />}
+            {loading ? 'Entrando...' : 'Entrar'}
+          </Button>
+        </form>
+      </div>
+    </AuthLayout>
   );
 }

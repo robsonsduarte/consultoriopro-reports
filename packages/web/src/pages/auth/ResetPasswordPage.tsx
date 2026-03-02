@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
+import { Loader2, ArrowLeft, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { AuthLayout } from '@/components/layout/AuthLayout';
 import { api } from '@/lib/api';
 
 export function ResetPasswordPage() {
@@ -19,23 +20,24 @@ export function ResetPasswordPage() {
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-muted/40 px-4">
-        <Card className="w-full max-w-sm">
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl">Link invalido</CardTitle>
-            <CardDescription>
+      <AuthLayout>
+        <div className="space-y-6 text-center">
+          <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-destructive/10">
+            <ShieldAlert className="size-6 text-destructive" />
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-2xl font-bold tracking-tight">Link invalido</h1>
+            <p className="text-muted-foreground text-sm">
               O link de recuperacao e invalido ou expirou.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link to="/forgot-password">
-              <Button variant="outline" className="w-full">
-                Solicitar novo link
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
+            </p>
+          </div>
+          <Link to="/forgot-password">
+            <Button variant="outline" className="w-full">
+              Solicitar novo link
+            </Button>
+          </Link>
+        </div>
+      </AuthLayout>
     );
   }
 
@@ -69,74 +71,80 @@ export function ResetPasswordPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-muted/40 px-4">
-        <Card className="w-full max-w-sm">
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl">Senha redefinida</CardTitle>
-            <CardDescription>
+      <AuthLayout>
+        <div className="space-y-6 text-center">
+          <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-primary/10">
+            <ShieldCheck className="size-6 text-primary" />
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-2xl font-bold tracking-tight">Senha redefinida</h1>
+            <p className="text-muted-foreground text-sm">
               Sua senha foi alterada com sucesso. Redirecionando para o login...
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
+            </p>
+          </div>
+        </div>
+      </AuthLayout>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/40 px-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Redefinir senha</CardTitle>
-          <CardDescription>Defina sua nova senha</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="newPassword">Nova senha</Label>
-              <Input
-                id="newPassword"
-                type="password"
-                placeholder="••••••"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                autoComplete="new-password"
-                autoFocus
-                disabled={loading}
-              />
-            </div>
+    <AuthLayout>
+      <div className="space-y-6">
+        <div className="space-y-2">
+          <h1 className="text-2xl font-bold tracking-tight">Redefinir senha</h1>
+          <p className="text-muted-foreground text-sm">Defina sua nova senha abaixo</p>
+        </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirmar senha</Label>
-              <Input
-                id="confirmPassword"
-                type="password"
-                placeholder="••••••"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                autoComplete="new-password"
-                disabled={loading}
-              />
-            </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="newPassword">Nova senha</Label>
+            <Input
+              id="newPassword"
+              type="password"
+              placeholder="••••••"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              autoComplete="new-password"
+              autoFocus
+              disabled={loading}
+            />
+          </div>
 
-            {error && (
+          <div className="space-y-2">
+            <Label htmlFor="confirmPassword">Confirmar senha</Label>
+            <Input
+              id="confirmPassword"
+              type="password"
+              placeholder="••••••"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              autoComplete="new-password"
+              disabled={loading}
+            />
+          </div>
+
+          {error && (
+            <div className="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2">
               <p className="text-sm text-destructive font-medium">{error}</p>
-            )}
-
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Salvando...' : 'Redefinir senha'}
-            </Button>
-
-            <div className="text-center">
-              <Link
-                to="/login"
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Voltar ao login
-              </Link>
             </div>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
-    );
+          )}
+
+          <Button type="submit" className="w-full" size="lg" disabled={loading}>
+            {loading && <Loader2 className="animate-spin" />}
+            {loading ? 'Salvando...' : 'Redefinir senha'}
+          </Button>
+
+          <div className="text-center">
+            <Link
+              to="/login"
+              className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary transition-colors"
+            >
+              <ArrowLeft className="size-3" />
+              Voltar ao login
+            </Link>
+          </div>
+        </form>
+      </div>
+    </AuthLayout>
+  );
 }
