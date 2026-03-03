@@ -65,7 +65,7 @@ report.get('/:professionalId', authMiddleware, async (c) => {
   // Merge overrides into appointments
   const appointments = externalReport.appointments
     .map((a) => {
-      const override = overrideMap.get(a.id);
+      const override = overrideMap.get(Number(a.id));
       if (override?.isExcluded) return null;
       return {
         ...a,
