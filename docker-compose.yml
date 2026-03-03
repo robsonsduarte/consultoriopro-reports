@@ -41,7 +41,7 @@ services:
       - cpro-api
     networks:
       - cpro-internal
-      - traefik-network
+      - app_network
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.cpro-web.rule=Host(`relatorios.consultoriopro.com.br`)"
@@ -55,5 +55,5 @@ volumes:
 networks:
   cpro-internal:
     driver: bridge
-  traefik-network:
+  app_network:
     external: true
