@@ -1,0 +1,59 @@
+services:
+  cpro-db:
+    image: postgres:16-alpine
+    container_name: cpro-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cpro_reports
+      POSTGRES_USER: cpro_reports
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - cpro_pgdata:/var/lib/postgresql/data
+    networks:
+      - cpro-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cpro_reports -d cpro_reports"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  cpro-api:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile
+    container_name: cpro-api
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    depends_on:
+      cpro-db:
+        condition: service_healthy
+    networks:
+      - cpro-internal
+
+  cpro-web:
+    build:
+      context: .
+      dockerfile: packages/web/Dockerfile
+    container_name: cpro-web
+    restart: unless-stopped
+    depends_on:
+      - cpro-api
+    networks:
+      - cpro-internal
+      - traefik-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.cpro-web.rule=Host(`relatorios.consultoriopro.com.br`)"
+      - "traefik.http.routers.cpro-web.entrypoints=websecure"
+      - "traefik.http.routers.cpro-web.tls.certresolver=myresolver"
+      - "traefik.http.services.cpro-web.loadbalancer.server.port=80"
+
+volumes:
+  cpro_pgdata:
+
+networks:
+  cpro-internal:
+    driver: bridge
+  traefik-network:
+    external: true

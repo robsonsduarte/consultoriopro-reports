@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+.env.local
+.env.production
+*.log
+.DS_Store
+.git
+.claude/
+*.tsbuildinfo
+API_SPEC.md
+UX_FRONTEND_BRIEF.md
