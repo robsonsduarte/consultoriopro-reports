@@ -1,8 +1,8 @@
 import 'dotenv/config';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
+import bcrypt from 'bcryptjs';
 import { users } from './schema.js';
-import { createHash } from 'node:crypto';
 
 const connectionString = process.env.DATABASE_URL
   ?? 'postgresql://robsonduarte@localhost:5433/cpro_reports';
@@ -10,8 +10,10 @@ const connectionString = process.env.DATABASE_URL
 const client = postgres(connectionString);
 const db = drizzle(client);
 
-function hashPassword(password: string): string {
-  return createHash('sha256').update(password).digest('hex');
+const BCRYPT_ROUNDS = 12;
+
+async function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, BCRYPT_ROUNDS);
 }
 
 async function seed() {
@@ -21,7 +23,7 @@ async function seed() {
   await db.insert(users).values({
     name: 'Admin',
     email: 'admin@consultoriopro.com',
-    passwordHash: hashPassword('admin123'),
+    passwordHash: await hashPassword('admin123'),
     role: 'super_admin',
     isActive: true,
     mustChangePassword: false,
@@ -31,7 +33,7 @@ async function seed() {
   await db.insert(users).values({
     name: 'Dr. Teste',
     email: 'dr.teste@consultoriopro.com',
-    passwordHash: hashPassword('teste123'),
+    passwordHash: await hashPassword('teste123'),
     role: 'user',
     apiProfessionalId: 1,
     isActive: true,

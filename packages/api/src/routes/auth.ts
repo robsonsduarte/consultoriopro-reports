@@ -1,19 +1,25 @@
 import { Hono } from 'hono';
 import jwt from 'jsonwebtoken';
 const { sign } = jwt;
+import bcrypt from 'bcryptjs';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
 import { loginSchema, changePasswordSchema } from '@cpro/shared';
 import { authMiddleware, type AuthEnv } from '../middleware/auth.js';
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import type { StringValue } from 'ms';
 
 const JWT_SECRET = process.env.JWT_SECRET ?? 'cpro-dev-secret-change-in-production';
 const JWT_EXPIRES_IN = (process.env.JWT_EXPIRES_IN ?? '4h') as StringValue;
+const BCRYPT_ROUNDS = 12;
 
-function hashPassword(password: string): string {
-  return createHash('sha256').update(password).digest('hex');
+async function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, BCRYPT_ROUNDS);
+}
+
+async function verifyPassword(password: string, hash: string): Promise<boolean> {
+  return bcrypt.compare(password, hash);
 }
 
 const auth = new Hono<AuthEnv>();
@@ -38,9 +44,9 @@ auth.post('/login', async (c) => {
     return c.json({ success: false, error: 'Credenciais invalidas' }, 401);
   }
 
-  const passwordHash = hashPassword(password);
+  const passwordMatch = await verifyPassword(password, user.passwordHash);
 
-  if (user.passwordHash !== passwordHash) {
+  if (!passwordMatch) {
     return c.json({ success: false, error: 'Credenciais invalidas' }, 401);
   }
 
@@ -86,14 +92,15 @@ auth.post('/change-password', authMiddleware, async (c) => {
     return c.json({ success: false, error: 'Usuario nao encontrado' }, 404);
   }
 
-  if (user.passwordHash !== hashPassword(currentPassword)) {
+  const currentMatch = await verifyPassword(currentPassword, user.passwordHash);
+  if (!currentMatch) {
     return c.json({ success: false, error: 'Senha atual incorreta' }, 401);
   }
 
   await db
     .update(users)
     .set({
-      passwordHash: hashPassword(newPassword),
+      passwordHash: await hashPassword(newPassword),
       mustChangePassword: false,
       updatedAt: new Date(),
     })
@@ -168,7 +175,7 @@ auth.post('/reset-password', async (c) => {
   await db
     .update(users)
     .set({
-      passwordHash: hashPassword(newPassword),
+      passwordHash: await hashPassword(newPassword),
       resetToken: null,
       resetTokenExpiresAt: null,
       mustChangePassword: false,

@@ -5,6 +5,15 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { health } from './routes/health.js';
 import { auth } from './routes/auth.js';
+import { professionals } from './routes/professionals.js';
+import { dashboard } from './routes/dashboard.js';
+import { report } from './routes/report.js';
+import { shiftsRouter } from './routes/shifts.js';
+import { usersRouter } from './routes/users.js';
+import { configRouter } from './routes/config.js';
+import { releasesRouter } from './routes/releases.js';
+import { overridesRouter } from './routes/overrides.js';
+import { notifications } from './routes/notifications.js';
 
 const app = new Hono();
 
@@ -18,6 +27,15 @@ app.use('*', cors({
 // Routes
 app.route('/health', health);
 app.route('/auth', auth);
+app.route('/professionals', professionals);
+app.route('/dashboard', dashboard);
+app.route('/report', report);
+app.route('/shifts', shiftsRouter);
+app.route('/users', usersRouter);
+app.route('/config', configRouter);
+app.route('/releases', releasesRouter);
+app.route('/overrides', overridesRouter);
+app.route('/notifications', notifications);
 
 // 404
 app.notFound((c) => c.json({ success: false, error: 'Rota nao encontrada' }, 404));

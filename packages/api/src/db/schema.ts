@@ -8,6 +8,8 @@ import {
   numeric,
   timestamp,
   pgEnum,
+  uniqueIndex,
+  index,
 } from 'drizzle-orm/pg-core';
 
 // Enums
@@ -47,7 +49,9 @@ export const reportReleases = pgTable('report_releases', {
   isPaid: boolean('is_paid').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  uniqueIndex('uq_release_professional_month').on(t.professionalId, t.month),
+]);
 
 // Contestation Messages
 export const contestationMessages = pgTable('contestation_messages', {
@@ -55,21 +59,26 @@ export const contestationMessages = pgTable('contestation_messages', {
   releaseId: integer('release_id').notNull().references(() => reportReleases.id),
   userId: integer('user_id').notNull().references(() => users.id),
   message: text('message').notNull(),
+  readByUserIds: integer('read_by_user_ids').array().notNull().default([]),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 // Shifts
+// NOTA: professionalId aqui referencia o apiProfessionalId da API externa,
+// NAO o users.id local. Usar JOIN users.apiProfessionalId para vincular.
 export const shifts = pgTable('shifts', {
   id: serial('id').primaryKey(),
-  userId: integer('user_id').notNull(),
+  professionalId: integer('professional_id').notNull(), // apiProfessionalId (API externa)
   month: varchar('month', { length: 7 }).notNull(), // YYYY-MM
-  dayOfWeek: integer('day_of_week').notNull(), // 0-6
+  dayOfWeek: integer('day_of_week').notNull(), // 1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sab
   period: shiftPeriodEnum('period').notNull(),
   modality: shiftModalityEnum('modality').notNull(),
   shiftValue: numeric('shift_value', { precision: 10, scale: 2 }).notNull(),
   origin: varchar('origin', { length: 50 }).notNull().default('manual'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index('idx_shifts_professional_month').on(t.professionalId, t.month),
+]);
 
 // Payment Methods
 export const paymentMethods = pgTable('payment_methods', {
@@ -95,15 +104,17 @@ export const paymentMethods = pgTable('payment_methods', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-// Professional Config
+// Professional Config (professionalId=0 para config global)
 export const professionalConfig = pgTable('professional_config', {
   id: serial('id').primaryKey(),
-  professionalId: integer('professional_id').notNull(),
+  professionalId: integer('professional_id').notNull().default(0), // 0 = global
   key: varchar('key', { length: 100 }).notNull(),
   value: text('value').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  uniqueIndex('uq_config_professional_key').on(t.professionalId, t.key),
+]);
 
 // Banks (reference data)
 export const banks = pgTable('banks', {
@@ -111,6 +122,30 @@ export const banks = pgTable('banks', {
   code: varchar('code', { length: 10 }).notNull(),
   name: varchar('name', { length: 255 }).notNull(),
 });
+
+// Report Snapshots (cache de dados da API externa)
+export const reportSnapshots = pgTable('report_snapshots', {
+  id: serial('id').primaryKey(),
+  professionalId: integer('professional_id').notNull(),
+  month: varchar('month', { length: 7 }).notNull(), // YYYY-MM
+  data: text('data').notNull(), // JSON stringified (appointments, operators, summary)
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_snapshot_professional_month').on(t.professionalId, t.month),
+]);
+
+// Appointment Overrides (flags locais sobre atendimentos da API externa)
+export const appointmentOverrides = pgTable('appointment_overrides', {
+  id: serial('id').primaryKey(),
+  externalAppointmentId: integer('external_appointment_id').notNull(),
+  professionalId: integer('professional_id').notNull(),
+  month: varchar('month', { length: 7 }).notNull(),
+  isPaid: boolean('is_paid'),
+  isExcluded: boolean('is_excluded').notNull().default(false),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_override_appointment').on(t.externalAppointmentId, t.professionalId),
+]);
 
 // Audit Log
 export const auditLog = pgTable('audit_log', {
