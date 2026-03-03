@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Table2,
@@ -17,16 +17,17 @@ import { ReleaseStatusBadge } from '@/components/domain/ReleaseStatusBadge';
 import { SortableHeader } from '@/components/domain/SortableHeader';
 import { ConfirmDialog } from '@/components/domain/ConfirmDialog';
 import { StatCard } from '@/components/domain/StatCard';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
 import { useSortableTable } from '@/hooks/useSortableTable';
-import { mockProfessionals } from '@/lib/mockData';
+import { useDashboardProfessionals, useReleaseAll } from '@/hooks/useApi';
+import type { ProfessionalReport } from '@/hooks/useApi';
 import { formatCurrency, formatMonth } from '@/lib/format';
 import { useUiStore } from '@/stores/uiStore';
 import { cn } from '@/lib/utils';
 import type { ReleaseStatus } from '@cpro/shared';
-import type { ProfessionalReport } from '@/lib/mockData';
 
 type ViewMode = 'table' | 'cards';
 
@@ -60,7 +61,14 @@ function ProfessionalCard({
               {professional.specialty}
             </p>
           </div>
-          <ReleaseStatusBadge status={professional.status} />
+          <div className="flex items-center gap-1.5 shrink-0">
+            {professional.status && <ReleaseStatusBadge status={professional.status} />}
+            {professional.isPaid && (
+              <Badge className="bg-green-600 text-white hover:bg-green-600 text-[10px] px-1.5 h-5">
+                Pago
+              </Badge>
+            )}
+          </div>
         </div>
 
         <div className="mt-3 pt-3 border-t grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
@@ -93,23 +101,14 @@ export function DashboardTablePage() {
   const { currentMonth } = useUiStore();
 
   const [viewMode, setViewMode] = useState<ViewMode>('table');
-  const [isLoading, setIsLoading] = useState(true);
-  const [data, setData] = useState<ProfessionalReport[]>([]);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [isReleasing, setIsReleasing] = useState(false);
+  const releaseAll = useReleaseAll();
 
-  // Simula delay de carregamento
-  useEffect(() => {
-    setIsLoading(true);
-    const timer = setTimeout(() => {
-      setData(mockProfessionals);
-      setIsLoading(false);
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, [currentMonth]);
+  const { data, isLoading } = useDashboardProfessionals(currentMonth);
+  const professionals = data ?? [];
 
   const { sorted, sortKey, sortDir, toggleSort } = useSortableTable<ProfessionalReport>(
-    data,
+    professionals,
     'name',
     'asc',
   );
@@ -122,16 +121,16 @@ export function DashboardTablePage() {
       in_review: 0,
       resolved: 0,
     };
-    data.forEach((p) => {
-      counts[p.status] = (counts[p.status] ?? 0) + 1;
+    professionals.forEach((p) => {
+      if (p.status) counts[p.status] = (counts[p.status] ?? 0) + 1;
     });
     return counts;
-  }, [data]);
+  }, [professionals]);
 
   const pendingCount = statusCounts.pending;
 
   const totals = useMemo(() => {
-    return data.reduce(
+    return professionals.reduce(
       (acc, p) => ({
         revenue: acc.revenue + p.revenue,
         tax: acc.tax + p.tax,
@@ -140,7 +139,7 @@ export function DashboardTablePage() {
       }),
       { revenue: 0, tax: 0, shifts: 0, netValue: 0 },
     );
-  }, [data]);
+  }, [professionals]);
 
   function handleRowClick(professional: ProfessionalReport) {
     navigate(`/report/${professional.id}?month=${currentMonth}`);
@@ -148,13 +147,13 @@ export function DashboardTablePage() {
 
   function handleExportCsv() {
     const headers = ['Nome', 'Receita', 'Imposto', 'Turnos', 'Liquido', 'Status'];
-    const rows = data.map((p) => [
+    const rows = professionals.map((p) => [
       p.name,
       p.revenue.toFixed(2),
       p.tax.toFixed(2),
       p.shifts,
       p.netValue.toFixed(2),
-      p.status,
+      p.status ?? '',
     ]);
     const csv = [headers, ...rows].map((r) => r.join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -167,17 +166,9 @@ export function DashboardTablePage() {
   }
 
   function handleReleaseAll() {
-    setIsReleasing(true);
-    // Simula operacao async
-    setTimeout(() => {
-      setData((prev) =>
-        prev.map((p) =>
-          p.status === 'pending' ? { ...p, status: 'approved' as ReleaseStatus } : p,
-        ),
-      );
-      setIsReleasing(false);
-      setConfirmOpen(false);
-    }, 1500);
+    releaseAll.mutate(currentMonth, {
+      onSuccess: () => setConfirmOpen(false),
+    });
   }
 
   const monthLabel = formatMonth(currentMonth);
@@ -192,7 +183,7 @@ export function DashboardTablePage() {
         </div>
 
         {/* Summary stats — so mostra quando tem dados */}
-        {!isLoading && data.length > 0 && (
+        {!isLoading && professionals.length > 0 && (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <StatCard
               title="Receita Total"
@@ -264,7 +255,7 @@ export function DashboardTablePage() {
               variant="outline"
               size="sm"
               onClick={handleExportCsv}
-              disabled={isLoading || data.length === 0}
+              disabled={isLoading || professionals.length === 0}
             >
               <Download className="size-4" />
               <span className="hidden sm:inline">Exportar CSV</span>
@@ -291,7 +282,7 @@ export function DashboardTablePage() {
         {/* Conteudo principal */}
         {isLoading ? (
           <TableSkeleton />
-        ) : data.length === 0 ? (
+        ) : professionals.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <p className="text-muted-foreground">
               Nenhum profissional encontrado para {monthLabel}.
@@ -417,7 +408,14 @@ export function DashboardTablePage() {
                               {formatCurrency(professional.netValue)}
                             </td>
                             <td className="px-4 py-3 text-center">
-                              <ReleaseStatusBadge status={professional.status} />
+                              <div className="inline-flex items-center gap-1.5">
+                                {professional.status && <ReleaseStatusBadge status={professional.status} />}
+                                {professional.isPaid && (
+                                  <Badge className="bg-green-600 text-white hover:bg-green-600 text-[10px] px-1.5 h-5">
+                                    Pago
+                                  </Badge>
+                                )}
+                              </div>
                             </td>
                             <td className="px-4 py-3 text-muted-foreground">
                               <ChevronRight className="size-4" />
@@ -442,7 +440,7 @@ export function DashboardTablePage() {
         title="Liberar todos os pendentes?"
         description={`Esta acao vai liberar ${pendingCount} relatorio${pendingCount !== 1 ? 's' : ''} pendente${pendingCount !== 1 ? 's' : ''} do mes de ${monthLabel} para revisao dos profissionais. Esta operacao nao pode ser desfeita em massa.`}
         confirmLabel="Liberar Todos"
-        isLoading={isReleasing}
+        isLoading={releaseAll.isPending}
       />
     </AppLayout>
   );

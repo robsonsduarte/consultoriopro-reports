@@ -7,6 +7,10 @@ import { ChangePasswordPage } from '@/pages/auth/ChangePasswordPage';
 import { DashboardTablePage } from '@/pages/dashboard/DashboardTablePage';
 import { DashboardCardsPage } from '@/pages/dashboard/DashboardCardsPage';
 import { ProfessionalDashPage } from '@/pages/dashboard/ProfessionalDashPage';
+import { ShiftsPage } from '@/pages/shifts/ShiftsPage';
+import { ConfigPage } from '@/pages/config/ConfigPage';
+import { UsersPage } from '@/pages/users/UsersPage';
+import { ReportPage } from '@/pages/report/ReportPage';
 import type { ReactNode } from 'react';
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
@@ -38,6 +42,11 @@ export function App() {
       <Route path="/" element={<ProtectedRoute><DashboardTablePage /></ProtectedRoute>} />
       <Route path="/dashboard" element={<ProtectedRoute><ProfessionalDashPage /></ProtectedRoute>} />
       <Route path="/dashboard/cards" element={<ProtectedRoute><DashboardCardsPage /></ProtectedRoute>} />
+      <Route path="/shifts" element={<ProtectedRoute><ShiftsPage /></ProtectedRoute>} />
+      <Route path="/shifts/:id" element={<ProtectedRoute><ShiftsPage /></ProtectedRoute>} />
+      <Route path="/config" element={<ProtectedRoute><ConfigPage /></ProtectedRoute>} />
+      <Route path="/users" element={<ProtectedRoute><UsersPage /></ProtectedRoute>} />
+      <Route path="/report/:id" element={<ProtectedRoute><ReportPage /></ProtectedRoute>} />
 
       {/* Catch-all */}
       <Route path="*" element={<Navigate to="/login" replace />} />

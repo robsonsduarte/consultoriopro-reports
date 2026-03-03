@@ -1,6 +1,8 @@
 /**
- * Helpers de formatacao para moeda, datas e meses.
+ * Helpers de formatacao para moeda, datas, meses e turnos.
  */
+
+import type { ShiftPeriod, ShiftModality } from '@cpro/shared';
 
 const MONTH_NAMES: Record<string, string> = {
   '01': 'Janeiro',
@@ -70,4 +72,82 @@ export function formatMonthShort(month: string): string {
   const mm = parts[1] ?? '';
   const name = MONTH_NAMES_SHORT[mm] ?? mm;
   return `${name}/${year}`;
+}
+
+/**
+ * Formata data ISO (YYYY-MM-DD) em formato brasileiro (DD/MM/YYYY).
+ */
+export function formatDate(date: string): string {
+  if (!date || !date.includes('-')) return date;
+  const [y, m, d] = date.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+/**
+ * Formata datetime ISO em formato brasileiro com horario.
+ */
+export function formatDateTime(datetime: string): string {
+  if (!datetime) return datetime;
+  const d = new Date(datetime);
+  if (isNaN(d.getTime())) return datetime;
+  return d.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Dia da semana (1=Seg ... 6=Sab)
+// ---------------------------------------------------------------------------
+
+const DAY_NAMES: Record<number, string> = {
+  1: 'Segunda',
+  2: 'Terca',
+  3: 'Quarta',
+  4: 'Quinta',
+  5: 'Sexta',
+  6: 'Sabado',
+};
+
+const DAY_NAMES_SHORT: Record<number, string> = {
+  1: 'Seg',
+  2: 'Ter',
+  3: 'Qua',
+  4: 'Qui',
+  5: 'Sex',
+  6: 'Sab',
+};
+
+export function formatDayOfWeek(day: number): string {
+  return DAY_NAMES[day] ?? String(day);
+}
+
+export function formatDayOfWeekShort(day: number): string {
+  return DAY_NAMES_SHORT[day] ?? String(day);
+}
+
+// ---------------------------------------------------------------------------
+// Periodo e modalidade de turno
+// ---------------------------------------------------------------------------
+
+const PERIOD_LABELS: Record<ShiftPeriod, string> = {
+  morning: 'Manha',
+  afternoon: 'Tarde',
+  evening: 'Noite',
+};
+
+const MODALITY_LABELS: Record<ShiftModality, string> = {
+  presencial: 'Presencial',
+  online: 'Online',
+};
+
+export function formatPeriod(period: ShiftPeriod): string {
+  return PERIOD_LABELS[period] ?? period;
+}
+
+export function formatModality(modality: ShiftModality): string {
+  return MODALITY_LABELS[modality] ?? modality;
 }

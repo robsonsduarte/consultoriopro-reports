@@ -1,5 +1,6 @@
 import { Menu } from 'lucide-react';
 import { MonthPicker } from '@/components/domain/MonthPicker';
+import { NotificationBell } from '@/components/layout/NotificationBell';
 import { UserMenu } from '@/components/layout/UserMenu';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -39,6 +40,9 @@ export function AppHeader({ onMenuClick, showMonthPicker = true }: AppHeaderProp
 
       {/* Spacer */}
       <div className="flex-1" />
+
+      {/* Notifications */}
+      <NotificationBell />
 
       {/* User menu */}
       <UserMenu />

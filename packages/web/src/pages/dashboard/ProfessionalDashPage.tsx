@@ -17,25 +17,26 @@ import { ReleaseStatusBadge } from '@/components/domain/ReleaseStatusBadge';
 import { ConfirmDialog } from '@/components/domain/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { mockProfessionalHistory } from '@/lib/mockData';
+import { Skeleton } from '@/components/ui/skeleton';
 import { formatCurrency, formatMonth } from '@/lib/format';
 import { useUiStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
+import { useMyReleases, useApproveRelease } from '@/hooks/useApi';
+import type { MyRelease } from '@/hooks/useApi';
 import { cn } from '@/lib/utils';
-import type { MonthHistory } from '@/lib/mockData';
 
 // ---------------------------------------------------------------------------
 // Banner de acao pendente
 // ---------------------------------------------------------------------------
 
 interface PendingActionBannerProps {
-  history: MonthHistory;
+  release: MyRelease;
   onApprove: () => void;
   onContest: () => void;
 }
 
 function PendingActionBanner({
-  history,
+  release,
   onApprove,
   onContest,
 }: PendingActionBannerProps) {
@@ -46,7 +47,7 @@ function PendingActionBanner({
           <AlertCircle className="size-5 text-yellow-600 dark:text-yellow-400 shrink-0 mt-0.5" />
           <div>
             <p className="font-medium text-yellow-900 dark:text-yellow-200">
-              Relatorio de {formatMonth(history.month)} aguarda sua revisao
+              Relatorio de {formatMonth(release.month)} aguarda sua revisao
             </p>
             <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-0.5">
               Verifique os dados e aprove ou conteste o relatorio.
@@ -83,40 +84,40 @@ function PendingActionBanner({
 // ---------------------------------------------------------------------------
 
 interface HistoryItemCardProps {
-  history: MonthHistory;
+  release: MyRelease;
   onClick: () => void;
 }
 
-function HistoryItemCard({ history, onClick }: HistoryItemCardProps) {
+function HistoryItemCard({ release, onClick }: HistoryItemCardProps) {
   return (
     <Card className="gap-0 py-0 overflow-hidden">
       <CardContent className="p-0">
         <div className="flex items-center gap-4 p-4">
           {/* Mes */}
           <div className="min-w-[7rem]">
-            <p className="font-medium text-sm">{formatMonth(history.month)}</p>
+            <p className="font-medium text-sm">{formatMonth(release.month)}</p>
           </div>
 
           {/* Status */}
           <div className="flex-1">
-            <ReleaseStatusBadge status={history.status} />
+            <ReleaseStatusBadge status={release.status} />
           </div>
 
           {/* Valores — ocultos em mobile pequeno */}
           <div className="hidden sm:flex items-center gap-6 text-sm">
             <div className="text-right">
               <p className="text-xs text-muted-foreground">Receita</p>
-              <p className="tabular-nums">{formatCurrency(history.revenue)}</p>
+              <p className="tabular-nums">{formatCurrency(release.revenue)}</p>
             </div>
             <div className="text-right">
               <p className="text-xs text-muted-foreground">Liquido</p>
               <p className="tabular-nums font-medium text-primary">
-                {formatCurrency(history.netValue)}
+                {formatCurrency(release.netValue)}
               </p>
             </div>
             <div className="text-right">
               <p className="text-xs text-muted-foreground">Turnos</p>
-              <p className="tabular-nums">{history.shifts}</p>
+              <p className="tabular-nums">{release.shifts}</p>
             </div>
           </div>
 
@@ -136,9 +137,9 @@ function HistoryItemCard({ history, onClick }: HistoryItemCardProps) {
         {/* Valores expandidos em mobile */}
         <div className="sm:hidden grid grid-cols-3 gap-px border-t bg-muted/30 text-xs">
           {[
-            { label: 'Receita', value: formatCurrency(history.revenue) },
-            { label: 'Liquido', value: formatCurrency(history.netValue) },
-            { label: 'Turnos', value: String(history.shifts) },
+            { label: 'Receita', value: formatCurrency(release.revenue) },
+            { label: 'Liquido', value: formatCurrency(release.netValue) },
+            { label: 'Turnos', value: String(release.shifts) },
           ].map(({ label, value }) => (
             <div key={label} className="bg-card p-2 text-center">
               <p className="text-muted-foreground">{label}</p>
@@ -162,35 +163,34 @@ export function ProfessionalDashPage() {
 
   const [approveOpen, setApproveOpen] = useState(false);
   const [contestOpen, setContestOpen] = useState(false);
-  const [isApproving, setIsApproving] = useState(false);
 
-  // Dados mockados do profissional — em producao viria de useQuery
-  const history = mockProfessionalHistory;
+  // Dados reais via API — so meses com release
+  const { data: history = [], isLoading } = useMyReleases();
 
-  // Mes corrente do profissional
+  const approveRelease = useApproveRelease();
+
+  // Mes mais recente liberado como resumo
   const currentReport = history.find((h) => h.month === currentMonth) ?? history[0];
 
   // Verifica se ha algum mes pendente de acao
   const pendingReport = history.find((h) => h.status === 'pending');
 
-  const monthLabel = formatMonth(currentMonth);
+  const monthLabel = currentReport ? formatMonth(currentReport.month) : formatMonth(currentMonth);
 
-  function handleViewReport(_releaseId: number, month: string) {
+  function handleViewReport(month: string) {
     navigate(`/report/${user?.apiProfessionalId ?? 0}?month=${month}`);
   }
 
   function handleApprove() {
-    setIsApproving(true);
-    // Simula request async
-    setTimeout(() => {
-      setIsApproving(false);
-      setApproveOpen(false);
-    }, 1500);
+    if (!pendingReport) return;
+    approveRelease.mutate(
+      { releaseId: pendingReport.releaseId, professionalId: user?.apiProfessionalId ?? 0, month: pendingReport.month },
+      { onSuccess: () => setApproveOpen(false) },
+    );
   }
 
-  function handleContest() {
+  function handleContestNavigate() {
     setContestOpen(false);
-    // Navega para aba de contestacao do relatorio
     if (pendingReport) {
       navigate(
         `/report/${user?.apiProfessionalId ?? 0}?month=${pendingReport.month}&tab=contestacao`,
@@ -220,7 +220,7 @@ export function ProfessionalDashPage() {
           title: 'Liquido',
           value: formatCurrency(currentReport.netValue),
           icon: Banknote,
-          trend: 'up' as const,
+          trend: currentReport.netValue >= 0 ? 'up' as const : 'down' as const,
         },
       ]
     : [];
@@ -228,12 +228,12 @@ export function ProfessionalDashPage() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        {/* Acao pendente — SEMPRE no topo em mobile e desktop */}
+        {/* Acao pendente — SEMPRE no topo */}
         {pendingReport && (
           <PendingActionBanner
-            history={pendingReport}
+            release={pendingReport}
             onApprove={() => setApproveOpen(true)}
-            onContest={() => setContestOpen(true)}
+            onContest={handleContestNavigate}
           />
         )}
 
@@ -245,57 +245,75 @@ export function ProfessionalDashPage() {
           </p>
         </div>
 
-        {/* Cards resumo do mes atual */}
-        <section>
-          <h2 className={cn('text-sm font-medium text-muted-foreground mb-3')}>
-            Resumo de {monthLabel}
-          </h2>
-
-          {currentReport ? (
+        {/* Loading */}
+        {isLoading && (
+          <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {stats.map((stat) => (
-                <StatCard
-                  key={stat.title}
-                  title={stat.title}
-                  value={stat.value}
-                  icon={stat.icon}
-                  trend={stat.trend}
-                />
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-24 rounded-lg" />
               ))}
             </div>
-          ) : (
-            <div className="rounded-lg border border-dashed p-8 text-center">
-              <p className="text-sm text-muted-foreground">
-                Nenhum relatorio disponivel para {monthLabel}.
-              </p>
-            </div>
-          )}
-        </section>
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-16 rounded-lg" />
+            ))}
+          </div>
+        )}
 
-        {/* Historico de meses */}
-        <section>
-          <h2 className="text-sm font-medium text-muted-foreground mb-3">
-            Historico
-          </h2>
+        {/* Cards resumo do mes mais recente */}
+        {!isLoading && (
+          <section>
+            <h2 className={cn('text-sm font-medium text-muted-foreground mb-3')}>
+              {currentReport ? `Resumo de ${monthLabel}` : 'Resumo'}
+            </h2>
 
-          {history.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-8 text-center">
-              <p className="text-sm text-muted-foreground">
-                Nenhum relatorio encontrado.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {history.map((item) => (
-                <HistoryItemCard
-                  key={item.month}
-                  history={item}
-                  onClick={() => handleViewReport(item.releaseId, item.month)}
-                />
-              ))}
-            </div>
-          )}
-        </section>
+            {currentReport ? (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {stats.map((stat) => (
+                  <StatCard
+                    key={stat.title}
+                    title={stat.title}
+                    value={stat.value}
+                    icon={stat.icon}
+                    trend={stat.trend}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed p-8 text-center">
+                <p className="text-sm text-muted-foreground">
+                  Nenhum relatorio liberado ainda.
+                </p>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* Historico de meses liberados */}
+        {!isLoading && (
+          <section>
+            <h2 className="text-sm font-medium text-muted-foreground mb-3">
+              Historico
+            </h2>
+
+            {history.length === 0 ? (
+              <div className="rounded-lg border border-dashed p-8 text-center">
+                <p className="text-sm text-muted-foreground">
+                  Nenhum relatorio liberado ainda.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {history.map((item) => (
+                  <HistoryItemCard
+                    key={item.month}
+                    release={item}
+                    onClick={() => handleViewReport(item.month)}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
       </div>
 
       {/* Dialog confirmar aprovacao */}
@@ -304,16 +322,16 @@ export function ProfessionalDashPage() {
         onClose={() => setApproveOpen(false)}
         onConfirm={handleApprove}
         title="Aprovar relatorio?"
-        description={`Ao aprovar, voce confirma que os dados do relatorio de ${pendingReport ? formatMonth(pendingReport.month) : monthLabel} estao corretos. Esta acao nao pode ser desfeita.`}
+        description={`Ao aprovar, voce confirma que os dados do relatorio de ${pendingReport ? formatMonth(pendingReport.month) : monthLabel} estao corretos.`}
         confirmLabel="Aprovar"
-        isLoading={isApproving}
+        isLoading={approveRelease.isPending}
       />
 
       {/* Dialog confirmar contestacao */}
       <ConfirmDialog
         open={contestOpen}
         onClose={() => setContestOpen(false)}
-        onConfirm={handleContest}
+        onConfirm={handleContestNavigate}
         title="Contestar relatorio?"
         description={`Voce sera redirecionado para o relatorio de ${pendingReport ? formatMonth(pendingReport.month) : monthLabel} onde podera explicar a contestacao.`}
         confirmLabel="Ir para contestacao"
