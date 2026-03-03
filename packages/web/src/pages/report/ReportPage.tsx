@@ -229,6 +229,7 @@ function AppointmentsTab({
 }) {
   const togglePaid = useToggleAppointmentPaid();
   const excludeAppt = useExcludeAppointment();
+  const [excludeTarget, setExcludeTarget] = useState<Appointment | null>(null);
 
   const { sorted, sortKey, sortDir, toggleSort } = useSortableTable(
     appointments,
@@ -236,6 +237,14 @@ function AppointmentsTab({
   );
 
   const total = useMemo(() => sorted.reduce((s, a) => s + a.value, 0), [sorted]);
+
+  function handleConfirmExclude() {
+    if (!excludeTarget) return;
+    excludeAppt.mutate(
+      { externalAppointmentId: excludeTarget.id, professionalId, month, isExcluded: true },
+      { onSuccess: () => setExcludeTarget(null) },
+    );
+  }
 
   return (
     <div className="space-y-3">
@@ -291,7 +300,8 @@ function AppointmentsTab({
                       variant="ghost"
                       size="icon"
                       className="size-7 text-muted-foreground hover:text-destructive"
-                      onClick={() => excludeAppt.mutate({ externalAppointmentId: a.id, professionalId, month, isExcluded: true })}
+                      onClick={() => setExcludeTarget(a)}
+                      disabled={excludeAppt.isPending}
                     >
                       <Trash2 className="size-3.5" />
                     </Button>
@@ -305,6 +315,21 @@ function AppointmentsTab({
       <p className="text-sm text-muted-foreground">
         {sorted.length} atendimento{sorted.length !== 1 ? 's' : ''} &middot; Total: {formatCurrency(total)}
       </p>
+
+      <ConfirmDialog
+        open={!!excludeTarget}
+        onClose={() => setExcludeTarget(null)}
+        onConfirm={handleConfirmExclude}
+        title="Excluir Atendimento"
+        description={
+          excludeTarget
+            ? `Excluir atendimento de ${excludeTarget.patientName} em ${formatDate(excludeTarget.date)} (${formatCurrency(excludeTarget.value)})? Esta acao cancela o atendimento no sistema principal e nao pode ser desfeita.`
+            : ''
+        }
+        confirmLabel="Excluir"
+        variant="destructive"
+        isLoading={excludeAppt.isPending}
+      />
     </div>
   );
 }

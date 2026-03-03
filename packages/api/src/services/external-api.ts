@@ -234,12 +234,14 @@ class ExternalApiClient {
   private baseUrl: string;
   private apiKey: string;
   private hostHeader: string;
+  private companyId: number;
   private isMockMode: boolean;
 
   constructor() {
     this.baseUrl = process.env.EXTERNAL_API_BASE ?? '';
     this.apiKey = process.env.EXTERNAL_API_KEY ?? '';
     this.hostHeader = process.env.EXTERNAL_API_HOST ?? 'consultoriopro.com.br';
+    this.companyId = Number(process.env.EXTERNAL_API_COMPANY_ID ?? '0');
     this.isMockMode = !this.apiKey || this.apiKey === '__CONFIGURE_LATER__';
 
     if (this.isMockMode) {
@@ -249,15 +251,70 @@ class ExternalApiClient {
     }
   }
 
-  private async apiFetch(path: string): Promise<Response> {
+  private async apiFetch(path: string, options?: RequestInit): Promise<Response> {
     const url = `${this.baseUrl}${path}`;
     return fetch(url, {
+      ...options,
       headers: {
         'X-API-Key': this.apiKey,
         'Content-Type': 'application/json',
+        ...(options?.headers ?? {}),
       },
       signal: AbortSignal.timeout(30_000),
     });
+  }
+
+  /**
+   * Cancela um atendimento na API PHP externa.
+   * Retorna true se cancelado com sucesso.
+   * Retorna false se o atendimento nao foi encontrado (soft-fail: override local ainda e aplicado).
+   * Lanca erro para falhas de autenticacao ou erros inesperados.
+   */
+  async cancelAppointment(appointmentId: number): Promise<boolean> {
+    if (this.isMockMode) {
+      console.log(`[ExternalApiClient] MOCK — cancelAppointment(${appointmentId}) simulado`);
+      return true;
+    }
+
+    if (!this.companyId) {
+      throw new Error('EXTERNAL_API_COMPANY_ID nao configurado');
+    }
+
+    const res = await this.apiFetch(
+      `/appointments/${appointmentId}?company=${this.companyId}`,
+      { method: 'DELETE' },
+    );
+
+    // A API PHP usa status 200 para sucesso e varios outros para erro.
+    // Lemos o corpo para distinguir "not found" (soft-fail) de erros reais.
+    const bodyText = await res.text().catch(() => '');
+
+    interface PhpApiResponse {
+      success: boolean;
+      error?: { code?: string; message?: string };
+    }
+
+    let bodyJson: PhpApiResponse | null = null;
+    try { bodyJson = JSON.parse(bodyText) as PhpApiResponse; } catch { /* nao e json */ }
+
+    if (res.ok && bodyJson?.success) {
+      return true;
+    }
+
+    const errorCode = bodyJson?.error?.code ?? '';
+    const isNotFound = errorCode === 'Appointment not found' || res.status === 404;
+
+    if (isNotFound) {
+      console.warn(`[ExternalApiClient] cancelAppointment(${appointmentId}) — atendimento nao encontrado na API PHP, prosseguindo com override local`);
+      return false;
+    }
+
+    // UNAUTHORIZED significa company errado ou API key invalida — erro critico
+    if (errorCode === 'UNAUTHORIZED' || res.status === 401 || res.status === 403) {
+      throw new Error(`External API cancelAppointment: autenticacao falhou (${res.status}) — verifique EXTERNAL_API_COMPANY_ID e EXTERNAL_API_KEY`);
+    }
+
+    throw new Error(`External API DELETE /appointments/${appointmentId}: status=${res.status} body=${bodyText.slice(0, 200)}`);
   }
 
   async getProfessionals(): Promise<Professional[]> {

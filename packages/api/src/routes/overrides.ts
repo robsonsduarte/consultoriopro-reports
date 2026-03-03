@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { authMiddleware, requireRole, type AuthEnv } from '../middleware/auth.js';
 import { db } from '../db/index.js';
 import { appointmentOverrides } from '../db/schema.js';
+import { externalApi } from '../services/external-api.js';
 
 function formatOverride(o: typeof appointmentOverrides.$inferSelect) {
   return {
@@ -56,6 +57,9 @@ overridesRouter.patch('/toggle-paid', authMiddleware, requireRole('super_admin',
 });
 
 // PATCH /overrides/exclude — Exclude/include an appointment
+// Quando isExcluded=true: cancela na API PHP externa ANTES de salvar override local.
+// Se API PHP retornar 404 (appointment nao existe la), continua com override local.
+// Se API PHP retornar outro erro, retorna 502 para o cliente.
 overridesRouter.patch('/exclude', authMiddleware, requireRole('super_admin', 'admin'), async (c) => {
   const body = await c.req.json() as {
     externalAppointmentId: number;
@@ -70,6 +74,17 @@ overridesRouter.patch('/exclude', authMiddleware, requireRole('super_admin', 'ad
 
   if (typeof body.isExcluded !== 'boolean') {
     return c.json({ success: false, error: 'isExcluded deve ser boolean' }, 400);
+  }
+
+  // Se estamos excluindo (nao restaurando), cancela na API PHP externa
+  if (body.isExcluded) {
+    try {
+      await externalApi.cancelAppointment(body.externalAppointmentId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[overrides/exclude] Falha ao cancelar na API PHP: ${message}`);
+      return c.json({ success: false, error: `Falha ao cancelar atendimento na API principal: ${message}` }, 502);
+    }
   }
 
   const [row] = await db
