@@ -1,6 +1,3 @@
-import { db } from '../db/index.js';
-import { reportSnapshots } from '../db/schema.js';
-import { eq, and } from 'drizzle-orm';
 import { resilientFetch } from './http-client.js';
 import { CircuitBreaker } from './circuit-breaker.js';
 import { ConcurrencyLimiter } from './concurrency-limiter.js';
@@ -168,39 +165,6 @@ function generateMockReport(professionalId: number, month: string): ExternalRepo
     appointments,
     operators,
   };
-}
-
-// --- Snapshot Cache ---
-
-const SNAPSHOT_TTL_MS = 60 * 60 * 1000; // 1 hour
-
-async function getSnapshot(professionalId: number, month: string): Promise<ExternalReport | null> {
-  const [row] = await db
-    .select()
-    .from(reportSnapshots)
-    .where(and(
-      eq(reportSnapshots.professionalId, professionalId),
-      eq(reportSnapshots.month, month),
-    ))
-    .limit(1);
-
-  if (!row) return null;
-
-  const age = Date.now() - row.fetchedAt.getTime();
-  if (age > SNAPSHOT_TTL_MS) return null;
-
-  return JSON.parse(row.data) as ExternalReport;
-}
-
-async function saveSnapshot(professionalId: number, month: string, data: ExternalReport): Promise<void> {
-  const json = JSON.stringify(data);
-  await db
-    .insert(reportSnapshots)
-    .values({ professionalId, month, data: json })
-    .onConflictDoUpdate({
-      target: [reportSnapshots.professionalId, reportSnapshots.month],
-      set: { data: json, fetchedAt: new Date() },
-    });
 }
 
 // --- Client ---
@@ -414,22 +378,10 @@ class ExternalApiClient {
   }
 
   async getReport(professionalId: number, month: string): Promise<ExternalReport> {
-    // Check snapshot cache first
-    const cached = await getSnapshot(professionalId, month);
-    if (cached) return cached;
-
-    let report: ExternalReport;
-
     if (this.isMockMode) {
-      report = generateMockReport(professionalId, month);
-    } else {
-      report = await this.fetchReportFromApi(professionalId, month);
+      return generateMockReport(professionalId, month);
     }
-
-    // Save to snapshot
-    await saveSnapshot(professionalId, month, report);
-
-    return report;
+    return this.fetchReportFromApi(professionalId, month);
   }
 
   async getReportBatch(ids: number[], month: string): Promise<Map<number, ExternalReport>> {

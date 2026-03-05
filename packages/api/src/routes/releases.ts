@@ -4,6 +4,7 @@ import { authMiddleware, requireRole, type AuthEnv } from '../middleware/auth.js
 import { db } from '../db/index.js';
 import { reportReleases, contestationMessages, users } from '../db/schema.js';
 import { externalApi } from '../services/external-api.js';
+import { syncReport } from '../services/sync-worker.js';
 
 function formatRelease(r: typeof reportReleases.$inferSelect) {
   return {
@@ -53,6 +54,11 @@ releasesRouter.post('/', authMiddleware, requireRole('super_admin', 'admin'), as
     })
     .returning();
 
+  // Sync automatico ao liberar release (background, nao bloqueia response)
+  syncReport(body.professionalId, body.month).catch((err) => {
+    console.warn(`[releases] Sync automatico falhou para prof=${body.professionalId} month=${body.month}:`, err);
+  });
+
   return c.json({ success: true, data: formatRelease(created!) }, 201);
 });
 
@@ -88,6 +94,11 @@ releasesRouter.post('/batch', authMiddleware, requireRole('super_admin', 'admin'
     });
 
     created++;
+
+    // Sync automatico ao liberar release (background, nao bloqueia response)
+    syncReport(prof.id, body.month).catch((err) => {
+      console.warn(`[releases/batch] Sync automatico falhou para prof=${prof.id} month=${body.month}:`, err);
+    });
   }
 
   return c.json({
