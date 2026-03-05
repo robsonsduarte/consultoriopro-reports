@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   FileText,
@@ -823,6 +823,7 @@ function ContestationTab({
 export function ReportPage() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const monthParam = searchParams.get('month');
   const currentMonth = useUiStore((s) => s.currentMonth);
   const setCurrentMonth = useUiStore((s) => s.setCurrentMonth);
@@ -947,7 +948,7 @@ export function ReportPage() {
             {isAdmin && (
               <ProfessionalSelect
                 value={selectedId}
-                onChange={setSelectedId}
+                onChange={(newId) => navigate(`/report/${newId}?month=${currentMonth}`)}
                 className="w-full sm:w-72"
               />
             )}
