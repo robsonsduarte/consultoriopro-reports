@@ -1,6 +1,9 @@
 import { db } from '../db/index.js';
 import { reportSnapshots } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
+import { resilientFetch } from './http-client.js';
+import { CircuitBreaker } from './circuit-breaker.js';
+import { ConcurrencyLimiter } from './concurrency-limiter.js';
 
 // --- Types ---
 
@@ -271,6 +274,8 @@ class ExternalApiClient {
   private hostHeader: string;
   private companyId: number;
   private isMockMode: boolean;
+  private breaker: CircuitBreaker;
+  private limiter: ConcurrencyLimiter;
 
   constructor() {
     this.baseUrl = process.env.EXTERNAL_API_BASE ?? '';
@@ -278,6 +283,8 @@ class ExternalApiClient {
     this.hostHeader = process.env.EXTERNAL_API_HOST ?? 'consultoriopro.com.br';
     this.companyId = Number(process.env.EXTERNAL_API_COMPANY_ID ?? '0');
     this.isMockMode = !this.apiKey || this.apiKey === '__CONFIGURE_LATER__';
+    this.breaker = new CircuitBreaker({ threshold: 3, resetTimeoutMs: 5 * 60 * 1000 });
+    this.limiter = new ConcurrencyLimiter(2);
 
     if (this.isMockMode) {
       console.log('[ExternalApiClient] Modo MOCK ativo (EXTERNAL_API_KEY nao configurada)');
@@ -288,15 +295,17 @@ class ExternalApiClient {
 
   private async apiFetch(path: string, options?: RequestInit): Promise<Response> {
     const url = `${this.baseUrl}${path}`;
-    return fetch(url, {
+    const fetchOptions: RequestInit = {
       ...options,
       headers: {
         'X-API-Key': this.apiKey,
         'Content-Type': 'application/json',
         ...(options?.headers ?? {}),
       },
-      signal: AbortSignal.timeout(30_000),
-    });
+    };
+    return this.limiter.run(() =>
+      this.breaker.execute(() => resilientFetch(url, fetchOptions)),
+    );
   }
 
   /**
@@ -366,36 +375,24 @@ class ExternalApiClient {
     const daysInMonth = new Date(Number(year), Number(mon), 0).getDate();
     const lastDay = `${year}-${mon}-${String(daysInMonth).padStart(2, '0')}`;
 
-    const all: ExternalExecution[] = [];
-    const pageSize = 200;
-    let offset = 0;
-    let hasMore = true;
-
-    while (hasMore) {
-      const path = `/executions?company=${this.companyId}&user=${professionalId}&appointment_date_start=${firstDay}&appointment_date_end=${lastDay}&limit=${pageSize}&offset=${offset}`;
-      const res = await this.apiFetch(path);
-      if (!res.ok) {
-        console.warn(`[ExternalApiClient] fetchExecutions: status=${res.status}, retornando parcial`);
-        break;
-      }
-
-      const json = await res.json() as RawExecutionsResponse;
-      if (!json.success || !json.data?.executions || !Array.isArray(json.data.executions)) {
-        break;
-      }
-
-      for (const e of json.data.executions) {
-        all.push({
-          id: Number(e.id),
-          guideNumber: e.guide_number ?? null,
-          attendanceDay: e.appointment_day ?? e.attendance?.date ?? '',
-          patientName: e.patient?.name?.trim() ?? '',
-        });
-      }
-
-      hasMore = json.data.has_more && json.data.executions.length === pageSize;
-      offset += pageSize;
+    const path = `/executions?company=${this.companyId}&user=${professionalId}&appointment_date_start=${firstDay}&appointment_date_end=${lastDay}&limit=1000`;
+    const res = await this.apiFetch(path);
+    if (!res.ok) {
+      console.warn(`[ExternalApiClient] fetchExecutions: status=${res.status}, retornando vazio`);
+      return [];
     }
+
+    const json = await res.json() as RawExecutionsResponse;
+    if (!json.success || !json.data?.executions || !Array.isArray(json.data.executions)) {
+      return [];
+    }
+
+    const all: ExternalExecution[] = json.data.executions.map((e) => ({
+      id: Number(e.id),
+      guideNumber: e.guide_number ?? null,
+      attendanceDay: e.appointment_day ?? e.attendance?.date ?? '',
+      patientName: e.patient?.name?.trim() ?? '',
+    }));
 
     return all;
   }
@@ -437,9 +434,14 @@ class ExternalApiClient {
 
   async getReportBatch(ids: number[], month: string): Promise<Map<number, ExternalReport>> {
     const results = new Map<number, ExternalReport>();
-    const BATCH_SIZE = 4;
+    const BATCH_SIZE = 2;
 
     for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+      // Delay between batches to avoid rate limiting (skip before first batch)
+      if (i > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+      }
+
       const batch = ids.slice(i, i + BATCH_SIZE);
       const promises = batch.map(async (id) => {
         try {

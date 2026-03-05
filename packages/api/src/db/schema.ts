@@ -156,3 +156,62 @@ export const auditLog = pgTable('audit_log', {
   ipAddress: varchar('ip_address', { length: 45 }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// --- Sync / Mirror Tables ---
+
+export const syncStatusEnum = pgEnum('sync_entity_status', ['idle', 'running', 'error']);
+
+export const professionalsMirror = pgTable('professionals_mirror', {
+  id: serial('id').primaryKey(),
+  externalId: integer('external_id').notNull().unique(),
+  name: varchar('name', { length: 255 }).notNull(),
+  specialty: varchar('specialty', { length: 255 }).notNull().default('Geral'),
+  lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const appointmentsMirror = pgTable('appointments_mirror', {
+  id: serial('id').primaryKey(),
+  externalId: integer('external_id').notNull(),
+  professionalId: integer('professional_id').notNull(),
+  month: varchar('month', { length: 7 }).notNull(),
+  date: varchar('date', { length: 10 }).notNull(),
+  time: varchar('time', { length: 8 }).notNull().default(''),
+  patientName: varchar('patient_name', { length: 255 }).notNull(),
+  operatorName: varchar('operator_name', { length: 255 }).notNull().default(''),
+  value: numeric('value', { precision: 10, scale: 2 }).notNull().default('0'),
+  guideNumber: varchar('guide_number', { length: 100 }),
+  lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_appt_mirror_external').on(t.externalId, t.professionalId),
+  index('idx_appt_mirror_prof_month').on(t.professionalId, t.month),
+]);
+
+export const reportSummaryMirror = pgTable('report_summary_mirror', {
+  id: serial('id').primaryKey(),
+  professionalId: integer('professional_id').notNull(),
+  month: varchar('month', { length: 7 }).notNull(),
+  revenue: numeric('revenue', { precision: 12, scale: 2 }).notNull().default('0'),
+  taxRate: numeric('tax_rate', { precision: 5, scale: 2 }).notNull().default('0'),
+  tax: numeric('tax', { precision: 12, scale: 2 }).notNull().default('0'),
+  netValue: numeric('net_value', { precision: 12, scale: 2 }).notNull().default('0'),
+  totalAppointments: integer('total_appointments').notNull().default(0),
+  operatorsSummary: text('operators_summary').notNull().default('[]'),
+  lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_summary_mirror_prof_month').on(t.professionalId, t.month),
+]);
+
+export const syncLog = pgTable('sync_log', {
+  id: serial('id').primaryKey(),
+  entity: varchar('entity', { length: 50 }).notNull(),
+  professionalId: integer('professional_id'),
+  month: varchar('month', { length: 7 }),
+  status: syncStatusEnum('status').notNull().default('idle'),
+  lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
+  errorCount: integer('error_count').notNull().default(0),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_sync_log_entity').on(t.entity, t.professionalId, t.month),
+]);
