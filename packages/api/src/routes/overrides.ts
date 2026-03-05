@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
+import { eq, and } from 'drizzle-orm';
 import { authMiddleware, requireRole, type AuthEnv } from '../middleware/auth.js';
 import { db } from '../db/index.js';
-import { appointmentOverrides } from '../db/schema.js';
+import { appointmentOverrides, appointmentsMirror } from '../db/schema.js';
 import { externalApi } from '../services/external-api.js';
 
 function formatOverride(o: typeof appointmentOverrides.$inferSelect) {
@@ -104,6 +105,16 @@ overridesRouter.patch('/exclude', authMiddleware, requireRole('super_admin', 'ad
       },
     })
     .returning();
+
+  // Atualizar mirror local (deletar appointment excluido)
+  if (body.isExcluded) {
+    await db.delete(appointmentsMirror).where(
+      and(
+        eq(appointmentsMirror.externalId, body.externalAppointmentId),
+        eq(appointmentsMirror.professionalId, body.professionalId),
+      )
+    ).catch(() => { /* mirror pode nao existir ainda */ });
+  }
 
   return c.json({ success: true, data: formatOverride(row!) });
 });

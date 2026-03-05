@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, inArray } from 'drizzle-orm';
 import { authMiddleware, requireRole, type AuthEnv } from '../middleware/auth.js';
 import { externalApi } from '../services/external-api.js';
 import { db } from '../db/index.js';
-import { reportReleases, shifts, users } from '../db/schema.js';
+import { reportReleases, shifts, users, professionalsMirror, reportSummaryMirror } from '../db/schema.js';
 
 const dashboard = new Hono<AuthEnv>();
 
@@ -22,12 +22,78 @@ dashboard.get('/professionals', authMiddleware, requireRole('super_admin', 'admi
 
   const activeIds = new Set(activeUsers.map((u) => u.apiProfessionalId!));
 
-  const allProfessionals = await externalApi.getProfessionals();
-  const professionals = allProfessionals.filter((p) => activeIds.has(p.id));
+  // Buscar profissionais do mirror local (filtrados por users ativos)
+  const activeIdsList = Array.from(activeIds);
+  const mirrorProfessionals = activeIdsList.length > 0
+    ? await db.select().from(professionalsMirror).where(inArray(professionalsMirror.externalId, activeIdsList))
+    : [];
+
+  // Fallback: se mirror vazio, usar API externa (pre-sync)
+  if (mirrorProfessionals.length === 0) {
+    const allProfessionals = await externalApi.getProfessionals();
+    const professionals = allProfessionals.filter((p) => activeIds.has(p.id));
+    const ids = professionals.map((p) => p.id);
+    const reports = await externalApi.getReportBatch(ids, month);
+
+    const shiftsDataFb = await db
+      .select({
+        professionalId: shifts.professionalId,
+        totalShifts: sql<number>`count(*)::int`,
+        totalShiftsValue: sql<number>`coalesce(sum(${shifts.shiftValue}), 0)::numeric`,
+      })
+      .from(shifts)
+      .where(eq(shifts.month, month))
+      .groupBy(shifts.professionalId);
+
+    const shiftsMapFb = new Map(shiftsDataFb.map((s) => [s.professionalId, s]));
+
+    const releasesFb = await db
+      .select()
+      .from(reportReleases)
+      .where(eq(reportReleases.month, month));
+
+    const releaseMapFb = new Map(releasesFb.map((r) => [r.professionalId, r]));
+
+    const dataFb = professionals.map((prof) => {
+      const report = reports.get(prof.id);
+      const shiftInfo = shiftsMapFb.get(prof.id);
+      const release = releaseMapFb.get(prof.id);
+
+      const revenue = report?.summary.revenue ?? 0;
+      const tax = report?.summary.tax ?? 0;
+      const shiftsCount = shiftInfo?.totalShifts ?? 0;
+      const shiftsValue = Number(shiftInfo?.totalShiftsValue ?? 0);
+      const netValue = Math.round((revenue - tax - shiftsValue) * 100) / 100;
+
+      return {
+        id: prof.id,
+        name: prof.name,
+        specialty: prof.specialty,
+        revenue,
+        tax,
+        shifts: shiftsCount,
+        netValue,
+        status: release?.status ?? null,
+        releaseId: release?.id ?? null,
+        isPaid: release?.isPaid ?? false,
+        month,
+      };
+    });
+
+    return c.json({ success: true, data: dataFb });
+  }
+
+  // Mirror path — leitura local (< 100ms)
+  const professionals = mirrorProfessionals.map((p) => ({ id: p.externalId, name: p.name, specialty: p.specialty }));
   const ids = professionals.map((p) => p.id);
 
-  // Batch fetch reports from external API (with snapshot cache)
-  const reports = await externalApi.getReportBatch(ids, month);
+  // Buscar summaries do mirror
+  const summaries = ids.length > 0
+    ? await db.select().from(reportSummaryMirror).where(
+        and(eq(reportSummaryMirror.month, month), inArray(reportSummaryMirror.professionalId, ids))
+      )
+    : [];
+  const summaryMap = new Map(summaries.map((s) => [s.professionalId, s]));
 
   // Fetch local shifts totals per professional
   const shiftsData = await db
@@ -52,12 +118,12 @@ dashboard.get('/professionals', authMiddleware, requireRole('super_admin', 'admi
 
   // Build response
   const data = professionals.map((prof) => {
-    const report = reports.get(prof.id);
+    const summary = summaryMap.get(prof.id);
     const shiftInfo = shiftsMap.get(prof.id);
     const release = releaseMap.get(prof.id);
 
-    const revenue = report?.summary.revenue ?? 0;
-    const tax = report?.summary.tax ?? 0;
+    const revenue = summary ? Number(summary.revenue) : 0;
+    const tax = summary ? Number(summary.tax) : 0;
     const shiftsCount = shiftInfo?.totalShifts ?? 0;
     const shiftsValue = Number(shiftInfo?.totalShiftsValue ?? 0);
     const netValue = Math.round((revenue - tax - shiftsValue) * 100) / 100;
@@ -101,17 +167,14 @@ dashboard.get('/my-releases', authMiddleware, async (c) => {
     return c.json({ success: true, data: [] });
   }
 
-  // Buscar report de cada mes em paralelo (snapshot cache torna rapido)
-  const reportByMonth = new Map<string, { revenue: number; tax: number }>();
-  const fetchPromises = releases.map(async (r) => {
-    try {
-      const report = await externalApi.getReport(professionalId, r.month);
-      reportByMonth.set(r.month, { revenue: report.summary.revenue, tax: report.summary.tax });
-    } catch {
-      // Se falhar, fica com 0
-    }
-  });
-  await Promise.all(fetchPromises);
+  // Buscar summaries do mirror local
+  const months = releases.map((r) => r.month);
+  const summaries = months.length > 0
+    ? await db.select().from(reportSummaryMirror).where(
+        and(eq(reportSummaryMirror.professionalId, professionalId), inArray(reportSummaryMirror.month, months))
+      )
+    : [];
+  const reportByMonth = new Map(summaries.map((s) => [s.month, { revenue: Number(s.revenue), tax: Number(s.tax) }]));
 
   // Buscar shifts agrupados por mes
   const shiftsData = await db

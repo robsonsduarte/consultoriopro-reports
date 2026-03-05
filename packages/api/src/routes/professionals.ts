@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, sql, inArray } from 'drizzle-orm';
 import { authMiddleware, requireRole, type AuthEnv } from '../middleware/auth.js';
 import { externalApi } from '../services/external-api.js';
 import { db } from '../db/index.js';
-import { users } from '../db/schema.js';
+import { users, professionalsMirror } from '../db/schema.js';
 
 const professionals = new Hono<AuthEnv>();
 
@@ -16,9 +16,20 @@ professionals.get('/', authMiddleware, requireRole('super_admin', 'admin'), asyn
 
   const activeIds = new Set(activeUsers.map((u) => u.apiProfessionalId!));
 
-  const list = await externalApi.getProfessionals();
-  const filtered = list.filter((p) => activeIds.has(p.id));
+  // Buscar profissionais do mirror local (filtrados por users ativos)
+  const activeIdsList = Array.from(activeIds);
+  const mirrorProfessionals = activeIdsList.length > 0
+    ? await db.select().from(professionalsMirror).where(inArray(professionalsMirror.externalId, activeIdsList))
+    : [];
 
+  // Fallback: se mirror vazio, usar API externa (pre-sync)
+  if (mirrorProfessionals.length === 0) {
+    const list = await externalApi.getProfessionals();
+    const filtered = list.filter((p) => activeIds.has(p.id));
+    return c.json({ success: true, data: filtered });
+  }
+
+  const filtered = mirrorProfessionals.map((p) => ({ id: p.externalId, name: p.name, specialty: p.specialty }));
   return c.json({ success: true, data: filtered });
 });
 

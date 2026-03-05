@@ -10,6 +10,9 @@ import {
   contestationMessages,
   appointmentOverrides,
   users,
+  appointmentsMirror,
+  reportSummaryMirror,
+  professionalsMirror,
 } from '../db/schema.js';
 
 const report = new Hono<AuthEnv>();
@@ -49,26 +52,141 @@ report.get('/:professionalId', authMiddleware, async (c) => {
     }
   }
 
-  // 1. External report (appointments + operators) e executions em paralelo
-  const [externalReport, executions] = await Promise.all([
-    externalApi.getReport(professionalId, month),
-    externalApi.fetchExecutions(professionalId, month).catch((err: unknown) => {
-      console.warn('[report] fetchExecutions falhou, continuando sem guideNumber:', err);
-      return [];
-    }),
-  ]);
+  // 1. Tentar ler do mirror local
+  const mirrorAppointments = await db.select().from(appointmentsMirror).where(
+    and(eq(appointmentsMirror.professionalId, professionalId), eq(appointmentsMirror.month, month))
+  );
 
-  // Monta indice de executions por "appointmentDay|patientNormalizado"
-  // appointment_day e a data do agendamento original — match exato com appointment.date
-  const executionIndex = new Map<string, string | null>();
-  for (const exec of executions) {
-    if (!exec.attendanceDay) continue;
-    const key = `${exec.attendanceDay}|${normalizeName(exec.patientName)}`;
-    if (!executionIndex.has(key) || executionIndex.get(key) === null) {
-      executionIndex.set(key, exec.guideNumber);
+  const [mirrorSummary] = await db.select().from(reportSummaryMirror).where(
+    and(eq(reportSummaryMirror.professionalId, professionalId), eq(reportSummaryMirror.month, month))
+  ).limit(1);
+
+  const [mirrorProfessional] = await db.select().from(professionalsMirror).where(
+    eq(professionalsMirror.externalId, professionalId)
+  ).limit(1);
+
+  // Fallback: se mirror vazio, usar API externa (pre-sync)
+  if (mirrorAppointments.length === 0 && !mirrorSummary) {
+    const [externalReport, executions] = await Promise.all([
+      externalApi.getReport(professionalId, month),
+      externalApi.fetchExecutions(professionalId, month).catch((err: unknown) => {
+        console.warn('[report] fetchExecutions falhou, continuando sem guideNumber:', err);
+        return [];
+      }),
+    ]);
+
+    const executionIndex = new Map<string, string | null>();
+    for (const exec of executions) {
+      if (!exec.attendanceDay) continue;
+      const key = `${exec.attendanceDay}|${normalizeName(exec.patientName)}`;
+      if (!executionIndex.has(key) || executionIndex.get(key) === null) {
+        executionIndex.set(key, exec.guideNumber);
+      }
     }
+
+    const overridesFb = await db
+      .select()
+      .from(appointmentOverrides)
+      .where(and(
+        eq(appointmentOverrides.professionalId, professionalId),
+        eq(appointmentOverrides.month, month),
+      ));
+
+    const overrideMapFb = new Map(overridesFb.map((o) => [o.externalAppointmentId, o]));
+
+    const appointmentsFb = externalReport.appointments
+      .map((a) => {
+        const override = overrideMapFb.get(Number(a.id));
+        if (override?.isExcluded) return null;
+
+        const lookupKey = `${a.date}|${normalizeName(a.patientName)}`;
+        const guideNumber = executionIndex.get(lookupKey) ?? null;
+
+        return {
+          ...a,
+          isPaid: override?.isPaid ?? a.isPaid,
+          guideNumber,
+        };
+      })
+      .filter((a): a is NonNullable<typeof a> => a !== null);
+
+    const localShiftsFb = await db
+      .select()
+      .from(shifts)
+      .where(and(eq(shifts.professionalId, professionalId), eq(shifts.month, month)));
+
+    const [releaseFb] = await db
+      .select()
+      .from(reportReleases)
+      .where(and(eq(reportReleases.professionalId, professionalId), eq(reportReleases.month, month)))
+      .limit(1);
+
+    let threadFb: Array<{
+      id: number;
+      releaseId: number;
+      senderName: string;
+      senderRole: 'admin' | 'user';
+      message: string;
+      createdAt: string;
+    }> = [];
+
+    if (releaseFb) {
+      const messages = await db
+        .select({
+          id: contestationMessages.id,
+          releaseId: contestationMessages.releaseId,
+          message: contestationMessages.message,
+          createdAt: contestationMessages.createdAt,
+          userName: users.name,
+          userRole: users.role,
+        })
+        .from(contestationMessages)
+        .innerJoin(users, eq(contestationMessages.userId, users.id))
+        .where(eq(contestationMessages.releaseId, releaseFb.id))
+        .orderBy(contestationMessages.createdAt);
+
+      threadFb = messages.map((m) => ({
+        id: m.id,
+        releaseId: m.releaseId,
+        senderName: m.userName,
+        senderRole: m.userRole === 'user' ? 'user' as const : 'admin' as const,
+        message: m.message,
+        createdAt: m.createdAt.toISOString(),
+      }));
+    }
+
+    const revenueFb = appointmentsFb.reduce((sum, a) => sum + a.value, 0);
+    const taxRateFb = externalReport.summary.taxRate;
+    const taxFb = Math.round(revenueFb * (taxRateFb / 100) * 100) / 100;
+    const shiftsValueFb = localShiftsFb.reduce((sum, s) => sum + Number(s.shiftValue), 0);
+    const netValueFb = Math.round((revenueFb - taxFb - shiftsValueFb) * 100) / 100;
+
+    return c.json({
+      success: true,
+      data: {
+        professional: externalReport.professional,
+        month,
+        release: releaseFb ? { id: releaseFb.id, status: releaseFb.status, isPaid: releaseFb.isPaid } : null,
+        summary: {
+          revenue: Math.round(revenueFb * 100) / 100,
+          tax: taxFb,
+          shiftsValue: Math.round(shiftsValueFb * 100) / 100,
+          netValue: netValueFb,
+          totalAppointments: appointmentsFb.length,
+        },
+        appointments: appointmentsFb,
+        operators: externalReport.operators,
+        shifts: localShiftsFb.map((s) => ({
+          id: s.id, professionalId: s.professionalId, month: s.month,
+          dayOfWeek: s.dayOfWeek, period: s.period, modality: s.modality,
+          shiftValue: Number(s.shiftValue), origin: s.origin, createdAt: s.createdAt.toISOString(),
+        })),
+        thread: threadFb,
+      },
+    });
   }
 
+  // Mirror path — leitura local
   // 2. Appointment overrides (isPaid, isExcluded)
   const overrides = await db
     .select()
@@ -80,22 +198,28 @@ report.get('/:professionalId', authMiddleware, async (c) => {
 
   const overrideMap = new Map(overrides.map((o) => [o.externalAppointmentId, o]));
 
-  // Merge overrides + guideNumber into appointments
-  const appointments = externalReport.appointments
+  // Merge overrides into mirror appointments
+  const appointments = mirrorAppointments
     .map((a) => {
-      const override = overrideMap.get(Number(a.id));
+      const override = overrideMap.get(a.externalId);
       if (override?.isExcluded) return null;
-
-      const lookupKey = `${a.date}|${normalizeName(a.patientName)}`;
-      const guideNumber = executionIndex.get(lookupKey) ?? null;
-
       return {
-        ...a,
-        isPaid: override?.isPaid ?? a.isPaid,
-        guideNumber,
+        id: a.externalId,
+        date: a.date,
+        time: a.time,
+        patientName: a.patientName,
+        operatorName: a.operatorName,
+        value: Number(a.value),
+        isPaid: override?.isPaid ?? false,
+        guideNumber: a.guideNumber,
       };
     })
     .filter((a): a is NonNullable<typeof a> => a !== null);
+
+  // Professional info do mirror
+  const professional = mirrorProfessional
+    ? { id: mirrorProfessional.externalId, name: mirrorProfessional.name, specialty: mirrorProfessional.specialty }
+    : { id: professionalId, name: `Profissional ${professionalId}`, specialty: 'Geral' };
 
   // 3. Local shifts
   const localShifts = await db
@@ -152,14 +276,14 @@ report.get('/:professionalId', authMiddleware, async (c) => {
 
   // 5. Calculate summary
   const revenue = appointments.reduce((sum, a) => sum + a.value, 0);
-  const taxRate = externalReport.summary.taxRate;
+  const taxRate = mirrorSummary ? Number(mirrorSummary.taxRate) : 15;
   const tax = Math.round(revenue * (taxRate / 100) * 100) / 100;
   const shiftsValue = localShifts.reduce((sum, s) => sum + Number(s.shiftValue), 0);
   const netValue = Math.round((revenue - tax - shiftsValue) * 100) / 100;
 
   // Build response
   const data = {
-    professional: externalReport.professional,
+    professional,
     month,
     release: release
       ? { id: release.id, status: release.status, isPaid: release.isPaid }
@@ -172,7 +296,7 @@ report.get('/:professionalId', authMiddleware, async (c) => {
       totalAppointments: appointments.length,
     },
     appointments,
-    operators: externalReport.operators,
+    operators: mirrorSummary ? (() => { try { return JSON.parse(mirrorSummary.operatorsSummary) as Array<{ name: string; appointmentCount: number; totalValue: number }>; } catch { return []; } })() : [],
     shifts: localShifts.map((s) => ({
       id: s.id,
       professionalId: s.professionalId,
