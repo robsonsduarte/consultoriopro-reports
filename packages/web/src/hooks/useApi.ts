@@ -599,3 +599,63 @@ export function useExcludeAppointment() {
     },
   });
 }
+
+// ---------------------------------------------------------------------------
+// Hooks de Sync
+// ---------------------------------------------------------------------------
+
+export interface SyncStatus {
+  lastSync: string | null;
+  professionalsCount: number;
+  activeJobs: Array<{ jobId: string; status: string; completed: number; total: number }>;
+}
+
+export interface SyncProgress {
+  jobId: string;
+  status: 'running' | 'completed' | 'error';
+  total: number;
+  completed: number;
+  currentProfessional: string | null;
+  startedAt: string;
+  errors: string[];
+}
+
+/** Status geral do sync (polling 30s) */
+export function useSyncStatus() {
+  return useQuery({
+    queryKey: ['sync', 'status'],
+    queryFn: () =>
+      api.get<ApiResponse<SyncStatus>>('/sync/status').then((r) => r.data),
+    staleTime: 15 * 1000,
+    refetchInterval: 30 * 1000,
+  });
+}
+
+/** Progresso de um sync job */
+export function useSyncProgress(jobId: string | null) {
+  return useQuery({
+    queryKey: ['sync', 'progress', jobId],
+    queryFn: () =>
+      api.get<ApiResponse<SyncProgress>>(`/sync/progress/${jobId}`).then((r) => r.data),
+    staleTime: 3 * 1000,
+    refetchInterval: 3 * 1000,
+    enabled: !!jobId,
+  });
+}
+
+/** Trigger sync manual */
+export function useSyncTrigger() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { month: string; professionalId?: number }) => {
+      const params = new URLSearchParams({ month: input.month });
+      if (input.professionalId) params.set('professionalId', String(input.professionalId));
+      return api.post<ApiResponse<{ type: string; jobId?: string }>>(`/sync/trigger?${params}`, {}).then((r) => r.data);
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['sync'] });
+      void qc.invalidateQueries({ queryKey: ['dashboard'] });
+      void qc.invalidateQueries({ queryKey: ['report'] });
+    },
+  });
+}

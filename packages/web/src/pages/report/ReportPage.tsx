@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   FileText,
   Send,
@@ -17,6 +18,7 @@ import {
   DollarSign,
   Receipt,
   Clock,
+  RefreshCw,
 } from 'lucide-react';
 import type { ReleaseStatus, ShiftPeriod, ShiftModality } from '@cpro/shared';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -74,6 +76,7 @@ import {
   useToggleAppointmentPaid,
   useExcludeAppointment,
   useMarkNotificationsRead,
+  useSyncTrigger,
 } from '@/hooks/useApi';
 import type { Appointment, OperatorSummary, Shift, ThreadMessage } from '@/hooks/useApi';
 import {
@@ -824,8 +827,10 @@ export function ReportPage() {
   const currentMonth = useUiStore((s) => s.currentMonth);
   const setCurrentMonth = useUiStore((s) => s.setCurrentMonth);
 
+  const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === 'super_admin' || user?.role === 'admin';
+  const syncTrigger = useSyncTrigger();
 
   // Set month from query param
   useMemo(() => {
@@ -938,13 +943,31 @@ export function ReportPage() {
             </div>
           </div>
 
-          {isAdmin && (
-            <ProfessionalSelect
-              value={selectedId}
-              onChange={setSelectedId}
-              className="w-full sm:w-72"
-            />
-          )}
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <ProfessionalSelect
+                value={selectedId}
+                onChange={setSelectedId}
+                className="w-full sm:w-72"
+              />
+            )}
+            {isAdmin && selectedId && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  syncTrigger.mutate(
+                    { month: currentMonth, professionalId: Number(selectedId) },
+                    { onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['report', Number(selectedId), currentMonth] }) },
+                  );
+                }}
+                disabled={syncTrigger.isPending}
+              >
+                <RefreshCw className={cn('size-4', syncTrigger.isPending && 'animate-spin')} />
+                Atualizar Dados
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Release bar */}

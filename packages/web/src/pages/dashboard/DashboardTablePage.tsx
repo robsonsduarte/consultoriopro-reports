@@ -10,6 +10,7 @@ import {
   Receipt,
   Clock,
   Banknote,
+  RefreshCw,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { StatusSummaryBar } from '@/components/domain/StatusSummaryBar';
@@ -22,7 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
 import { useSortableTable } from '@/hooks/useSortableTable';
-import { useDashboardProfessionals, useReleaseAll } from '@/hooks/useApi';
+import { useDashboardProfessionals, useReleaseAll, useSyncTrigger, useSyncStatus, useSyncProgress } from '@/hooks/useApi';
 import type { ProfessionalReport } from '@/hooks/useApi';
 import { formatCurrency, formatMonth } from '@/lib/format';
 import { useUiStore } from '@/stores/uiStore';
@@ -102,7 +103,11 @@ export function DashboardTablePage() {
 
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [syncJobId, setSyncJobId] = useState<string | null>(null);
   const releaseAll = useReleaseAll();
+  const syncTrigger = useSyncTrigger();
+  const { data: syncStatus } = useSyncStatus();
+  const { data: syncProgress } = useSyncProgress(syncJobId);
 
   const { data, isLoading } = useDashboardProfessionals(currentMonth);
   const professionals = data ?? [];
@@ -180,6 +185,11 @@ export function DashboardTablePage() {
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-bold">Dashboard</h1>
           <p className="text-sm text-muted-foreground">{monthLabel}</p>
+          {syncStatus?.lastSync && (
+            <p className="text-xs text-muted-foreground">
+              Dados atualizados em: {new Date(syncStatus.lastSync).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+            </p>
+          )}
         </div>
 
         {/* Summary stats — so mostra quando tem dados */}
@@ -250,6 +260,26 @@ export function DashboardTablePage() {
                 <span className="hidden sm:inline">Cards</span>
               </button>
             </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                syncTrigger.mutate({ month: currentMonth }, {
+                  onSuccess: (data) => {
+                    if (data.jobId) setSyncJobId(data.jobId);
+                  },
+                });
+              }}
+              disabled={syncTrigger.isPending || syncProgress?.status === 'running'}
+            >
+              <RefreshCw className={cn('size-4', (syncTrigger.isPending || syncProgress?.status === 'running') && 'animate-spin')} />
+              <span className="hidden sm:inline">
+                {syncProgress?.status === 'running'
+                  ? `Sincronizando ${syncProgress.completed}/${syncProgress.total}`
+                  : 'Sincronizar'}
+              </span>
+            </Button>
 
             <Button
               variant="outline"

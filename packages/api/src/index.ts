@@ -14,6 +14,8 @@ import { configRouter } from './routes/config.js';
 import { releasesRouter } from './routes/releases.js';
 import { overridesRouter } from './routes/overrides.js';
 import { notifications } from './routes/notifications.js';
+import { syncRouter } from './routes/sync.js';
+import { startSyncScheduler } from './services/sync-scheduler.js';
 
 const app = new Hono();
 
@@ -36,6 +38,7 @@ app.route('/config', configRouter);
 app.route('/releases', releasesRouter);
 app.route('/overrides', overridesRouter);
 app.route('/notifications', notifications);
+app.route('/sync', syncRouter);
 
 // 404
 app.notFound((c) => c.json({ success: false, error: 'Rota nao encontrada' }, 404));
@@ -51,3 +54,6 @@ const port = Number(process.env.API_PORT) || 3001;
 console.log(`[cpro-api] Servidor rodando em http://localhost:${port}`);
 
 serve({ fetch: app.fetch, port });
+
+// Inicia scheduler de sincronizacao automatica
+startSyncScheduler();

@@ -3,6 +3,7 @@ import { eq, and } from 'drizzle-orm';
 import { authMiddleware, type AuthEnv } from '../middleware/auth.js';
 import { externalApi } from '../services/external-api.js';
 import { db } from '../db/index.js';
+import { normalizeName } from '../utils/normalize.js';
 import {
   shifts,
   reportReleases,
@@ -59,10 +60,6 @@ report.get('/:professionalId', authMiddleware, async (c) => {
 
   // Monta indice de executions por "appointmentDay|patientNormalizado"
   // appointment_day e a data do agendamento original — match exato com appointment.date
-  function normalizeName(name: string): string {
-    return name.toLowerCase().normalize('NFD').replace(/\p{M}/gu, '').replace(/\s+/g, ' ').trim();
-  }
-
   const executionIndex = new Map<string, string | null>();
   for (const exec of executions) {
     if (!exec.attendanceDay) continue;
