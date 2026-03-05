@@ -212,20 +212,26 @@ interface RawProfessional {
 interface RawExecution {
   id: number | string;
   guide_number: string | null;
-  attendance_day: string;   // YYYY-MM-DD
-  patient_first_name?: string;
-  patient_last_name?: string;
-  // alternativa: objeto patient aninhado dependendo do endpoint
-  patient?: {
-    name?: string;
-    first_name?: string;
-    last_name?: string;
+  attendance: {
+    date: string;
+    start: string;
+    end: string;
+  };
+  patient: {
+    id: number;
+    name: string;
+    document: string | null;
+    mobile: string | null;
   };
 }
 
 interface RawExecutionsResponse {
   success: boolean;
-  data: RawExecution[];
+  data: {
+    executions: RawExecution[];
+    total: number;
+    has_more: boolean;
+  };
 }
 
 interface RawReportResponse {
@@ -368,28 +374,16 @@ class ExternalApiClient {
     }
 
     const json = await res.json() as RawExecutionsResponse;
-    if (!json.success || !Array.isArray(json.data)) {
+    if (!json.success || !json.data?.executions || !Array.isArray(json.data.executions)) {
       return [];
     }
 
-    return json.data.map((e): ExternalExecution => {
-      // Resolve nome do paciente — endpoint pode retornar flat ou aninhado
-      let patientName = '';
-      if (e.patient?.name) {
-        patientName = e.patient.name.trim();
-      } else if (e.patient?.first_name) {
-        patientName = `${e.patient.first_name} ${e.patient.last_name ?? ''}`.trim();
-      } else if (e.patient_first_name) {
-        patientName = `${e.patient_first_name} ${e.patient_last_name ?? ''}`.trim();
-      }
-
-      return {
-        id: Number(e.id),
-        guideNumber: e.guide_number ?? null,
-        attendanceDay: e.attendance_day,
-        patientName,
-      };
-    });
+    return json.data.executions.map((e): ExternalExecution => ({
+      id: Number(e.id),
+      guideNumber: e.guide_number ?? null,
+      attendanceDay: e.attendance?.date ?? '',
+      patientName: e.patient?.name?.trim() ?? '',
+    }));
   }
 
   async getProfessionals(): Promise<Professional[]> {
