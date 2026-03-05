@@ -57,17 +57,18 @@ report.get('/:professionalId', authMiddleware, async (c) => {
     }),
   ]);
 
-  // Monta indice de executions por "date|patientNormalizado" para match eficiente
+  // Monta indice de executions por nome normalizado do paciente
+  // Quando ha multiplas guias para o mesmo paciente no mes, mantemos a de maior ID (mais recente)
   function normalizeName(name: string): string {
     return name.toLowerCase().normalize('NFD').replace(/\p{M}/gu, '').replace(/\s+/g, ' ').trim();
   }
 
-  const executionIndex = new Map<string, string | null>();
+  const executionIndex = new Map<string, { guideNumber: string | null; id: number }>();
   for (const exec of executions) {
-    const key = `${exec.attendanceDay}|${normalizeName(exec.patientName)}`;
-    // Se houver multiplas executions para mesma data+paciente, mantemos o primeiro guide_number nao-nulo
-    if (!executionIndex.has(key) || executionIndex.get(key) === null) {
-      executionIndex.set(key, exec.guideNumber);
+    const key = normalizeName(exec.patientName);
+    const existing = executionIndex.get(key);
+    if (!existing || exec.id > existing.id) {
+      executionIndex.set(key, { guideNumber: exec.guideNumber, id: exec.id });
     }
   }
 
@@ -88,10 +89,8 @@ report.get('/:professionalId', authMiddleware, async (c) => {
       const override = overrideMap.get(Number(a.id));
       if (override?.isExcluded) return null;
 
-      const lookupKey = `${a.date}|${normalizeName(a.patientName)}`;
-      const guideNumber = executionIndex.has(lookupKey)
-        ? (executionIndex.get(lookupKey) ?? null)
-        : null;
+      const lookupKey = normalizeName(a.patientName);
+      const guideNumber = executionIndex.get(lookupKey)?.guideNumber ?? null;
 
       return {
         ...a,

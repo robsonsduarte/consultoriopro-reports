@@ -372,7 +372,7 @@ class ExternalApiClient {
     let hasMore = true;
 
     while (hasMore) {
-      const path = `/executions?company=${this.companyId}&user=${professionalId}&appointment_date_start=${firstDay}&appointment_date_end=${lastDay}&limit=${pageSize}&offset=${offset}`;
+      const path = `/executions?company=${this.companyId}&user=${professionalId}&attendance_date_start=${firstDay}&attendance_date_end=${lastDay}&limit=${pageSize}&offset=${offset}`;
       const res = await this.apiFetch(path);
       if (!res.ok) {
         console.warn(`[ExternalApiClient] fetchExecutions: status=${res.status}, retornando parcial`);
