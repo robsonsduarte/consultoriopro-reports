@@ -212,6 +212,7 @@ interface RawProfessional {
 interface RawExecution {
   id: number | string;
   guide_number: string | null;
+  appointment_day: string | null;
   attendance: {
     date: string;
     start: string;
@@ -371,7 +372,7 @@ class ExternalApiClient {
     let hasMore = true;
 
     while (hasMore) {
-      const path = `/executions?company=${this.companyId}&user=${professionalId}&attendance_date_start=${firstDay}&attendance_date_end=${lastDay}&limit=${pageSize}&offset=${offset}`;
+      const path = `/executions?company=${this.companyId}&user=${professionalId}&appointment_date_start=${firstDay}&appointment_date_end=${lastDay}&limit=${pageSize}&offset=${offset}`;
       const res = await this.apiFetch(path);
       if (!res.ok) {
         console.warn(`[ExternalApiClient] fetchExecutions: status=${res.status}, retornando parcial`);
@@ -387,7 +388,7 @@ class ExternalApiClient {
         all.push({
           id: Number(e.id),
           guideNumber: e.guide_number ?? null,
-          attendanceDay: e.attendance?.date ?? '',
+          attendanceDay: e.appointment_day ?? e.attendance?.date ?? '',
           patientName: e.patient?.name?.trim() ?? '',
         });
       }
