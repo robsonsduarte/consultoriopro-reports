@@ -18,6 +18,14 @@ export interface ExternalAppointment {
   operatorName: string;
   value: number;
   isPaid: boolean;
+  guideNumber: string | null;
+}
+
+export interface ExternalExecution {
+  id: number;
+  guideNumber: string | null;
+  attendanceDay: string;   // YYYY-MM-DD
+  patientName: string;
 }
 
 export interface ExternalOperatorSummary {
@@ -118,6 +126,7 @@ function generateMockReport(professionalId: number, month: string): ExternalRepo
       operatorName,
       value,
       isPaid: rand() > 0.3,
+      guideNumber: null,
     });
 
     if (operatorName) {
@@ -198,6 +207,25 @@ interface RawProfessional {
   id: string | number;
   name: string;
   specialty: string;
+}
+
+interface RawExecution {
+  id: number | string;
+  guide_number: string | null;
+  attendance_day: string;   // YYYY-MM-DD
+  patient_first_name?: string;
+  patient_last_name?: string;
+  // alternativa: objeto patient aninhado dependendo do endpoint
+  patient?: {
+    name?: string;
+    first_name?: string;
+    last_name?: string;
+  };
+}
+
+interface RawExecutionsResponse {
+  success: boolean;
+  data: RawExecution[];
 }
 
 interface RawReportResponse {
@@ -317,6 +345,53 @@ class ExternalApiClient {
     throw new Error(`External API DELETE /appointments/${appointmentId}: status=${res.status} body=${bodyText.slice(0, 200)}`);
   }
 
+  async fetchExecutions(professionalId: number, month: string): Promise<ExternalExecution[]> {
+    if (this.isMockMode) {
+      return [];
+    }
+
+    if (!this.companyId) {
+      throw new Error('EXTERNAL_API_COMPANY_ID nao configurado');
+    }
+
+    const [year, mon] = month.split('-');
+    const firstDay = `${year}-${mon}-01`;
+    const daysInMonth = new Date(Number(year), Number(mon), 0).getDate();
+    const lastDay = `${year}-${mon}-${String(daysInMonth).padStart(2, '0')}`;
+
+    const path = `/executions?company=${this.companyId}&user=${professionalId}&attendance_date_start=${firstDay}&attendance_date_end=${lastDay}&limit=500`;
+
+    const res = await this.apiFetch(path);
+    if (!res.ok) {
+      console.warn(`[ExternalApiClient] fetchExecutions: status=${res.status}, retornando vazio`);
+      return [];
+    }
+
+    const json = await res.json() as RawExecutionsResponse;
+    if (!json.success || !Array.isArray(json.data)) {
+      return [];
+    }
+
+    return json.data.map((e): ExternalExecution => {
+      // Resolve nome do paciente — endpoint pode retornar flat ou aninhado
+      let patientName = '';
+      if (e.patient?.name) {
+        patientName = e.patient.name.trim();
+      } else if (e.patient?.first_name) {
+        patientName = `${e.patient.first_name} ${e.patient.last_name ?? ''}`.trim();
+      } else if (e.patient_first_name) {
+        patientName = `${e.patient_first_name} ${e.patient_last_name ?? ''}`.trim();
+      }
+
+      return {
+        id: Number(e.id),
+        guideNumber: e.guide_number ?? null,
+        attendanceDay: e.attendance_day,
+        patientName,
+      };
+    });
+  }
+
   async getProfessionals(): Promise<Professional[]> {
     if (this.isMockMode) {
       return MOCK_PROFESSIONALS;
@@ -380,6 +455,7 @@ class ExternalApiClient {
     const r = json.data.report;
 
     // Map appointments (fields: date, time, patient_name, operator_name, value)
+    // guideNumber e enriquecido depois via fetchExecutions na rota
     const appointments: ExternalAppointment[] = (r.appointments ?? []).map((a) => ({
       id: a.id,
       date: a.date,
@@ -388,6 +464,7 @@ class ExternalApiClient {
       operatorName: (a.operator_name ?? '').trim(),
       value: Number(a.value) || 0,
       isPaid: false, // managed locally via appointment_overrides
+      guideNumber: null,
     }));
 
     // Operator summaries from revenue.by_operator (pre-aggregated by API)

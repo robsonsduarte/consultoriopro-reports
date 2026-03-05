@@ -258,6 +258,7 @@ function AppointmentsTab({
               <TableHead>
                 <SortableHeader label="Hora" sortKey="time" currentKey={String(sortKey)} currentDir={sortDir} onSort={(k) => toggleSort(k as keyof Appointment)} />
               </TableHead>
+              <TableHead className="hidden sm:table-cell">Guia</TableHead>
               <TableHead>
                 <SortableHeader label="Paciente" sortKey="patientName" currentKey={String(sortKey)} currentDir={sortDir} onSort={(k) => toggleSort(k as keyof Appointment)} />
               </TableHead>
@@ -274,6 +275,7 @@ function AppointmentsTab({
               <TableRow key={a.id}>
                 <TableCell>{formatDate(a.date)}</TableCell>
                 <TableCell className="text-muted-foreground tabular-nums">{a.time ? a.time.slice(0, 5) : '—'}</TableCell>
+                <TableCell className="hidden sm:table-cell text-muted-foreground tabular-nums">{a.guideNumber ?? '—'}</TableCell>
                 <TableCell className="font-medium">{a.patientName}</TableCell>
                 <TableCell className="hidden sm:table-cell text-muted-foreground">
                   {a.operatorName || '—'}

@@ -48,8 +48,28 @@ report.get('/:professionalId', authMiddleware, async (c) => {
     }
   }
 
-  // 1. External report (appointments + operators)
-  const externalReport = await externalApi.getReport(professionalId, month);
+  // 1. External report (appointments + operators) e executions em paralelo
+  const [externalReport, executions] = await Promise.all([
+    externalApi.getReport(professionalId, month),
+    externalApi.fetchExecutions(professionalId, month).catch((err: unknown) => {
+      console.warn('[report] fetchExecutions falhou, continuando sem guideNumber:', err);
+      return [];
+    }),
+  ]);
+
+  // Monta indice de executions por "date|patientNormalizado" para match eficiente
+  function normalizeName(name: string): string {
+    return name.toLowerCase().normalize('NFD').replace(/\p{M}/gu, '').replace(/\s+/g, ' ').trim();
+  }
+
+  const executionIndex = new Map<string, string | null>();
+  for (const exec of executions) {
+    const key = `${exec.attendanceDay}|${normalizeName(exec.patientName)}`;
+    // Se houver multiplas executions para mesma data+paciente, mantemos o primeiro guide_number nao-nulo
+    if (!executionIndex.has(key) || executionIndex.get(key) === null) {
+      executionIndex.set(key, exec.guideNumber);
+    }
+  }
 
   // 2. Appointment overrides (isPaid, isExcluded)
   const overrides = await db
@@ -62,14 +82,21 @@ report.get('/:professionalId', authMiddleware, async (c) => {
 
   const overrideMap = new Map(overrides.map((o) => [o.externalAppointmentId, o]));
 
-  // Merge overrides into appointments
+  // Merge overrides + guideNumber into appointments
   const appointments = externalReport.appointments
     .map((a) => {
       const override = overrideMap.get(Number(a.id));
       if (override?.isExcluded) return null;
+
+      const lookupKey = `${a.date}|${normalizeName(a.patientName)}`;
+      const guideNumber = executionIndex.has(lookupKey)
+        ? (executionIndex.get(lookupKey) ?? null)
+        : null;
+
       return {
         ...a,
         isPaid: override?.isPaid ?? a.isPaid,
+        guideNumber,
       };
     })
     .filter((a): a is NonNullable<typeof a> => a !== null);

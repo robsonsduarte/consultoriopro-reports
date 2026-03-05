@@ -56,6 +56,7 @@ export interface Appointment {
   operatorName: string;
   value: number;
   isPaid: boolean;
+  guideNumber: string | null;
 }
 
 export interface OperatorSummary {
