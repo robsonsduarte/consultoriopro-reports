@@ -365,25 +365,38 @@ class ExternalApiClient {
     const daysInMonth = new Date(Number(year), Number(mon), 0).getDate();
     const lastDay = `${year}-${mon}-${String(daysInMonth).padStart(2, '0')}`;
 
-    const path = `/executions?company=${this.companyId}&user=${professionalId}&attendance_date_start=${firstDay}&attendance_date_end=${lastDay}&limit=500`;
+    const all: ExternalExecution[] = [];
+    const pageSize = 200;
+    let offset = 0;
+    let hasMore = true;
 
-    const res = await this.apiFetch(path);
-    if (!res.ok) {
-      console.warn(`[ExternalApiClient] fetchExecutions: status=${res.status}, retornando vazio`);
-      return [];
+    while (hasMore) {
+      const path = `/executions?company=${this.companyId}&user=${professionalId}&attendance_date_start=${firstDay}&attendance_date_end=${lastDay}&limit=${pageSize}&offset=${offset}`;
+      const res = await this.apiFetch(path);
+      if (!res.ok) {
+        console.warn(`[ExternalApiClient] fetchExecutions: status=${res.status}, retornando parcial`);
+        break;
+      }
+
+      const json = await res.json() as RawExecutionsResponse;
+      if (!json.success || !json.data?.executions || !Array.isArray(json.data.executions)) {
+        break;
+      }
+
+      for (const e of json.data.executions) {
+        all.push({
+          id: Number(e.id),
+          guideNumber: e.guide_number ?? null,
+          attendanceDay: e.attendance?.date ?? '',
+          patientName: e.patient?.name?.trim() ?? '',
+        });
+      }
+
+      hasMore = json.data.has_more && json.data.executions.length === pageSize;
+      offset += pageSize;
     }
 
-    const json = await res.json() as RawExecutionsResponse;
-    if (!json.success || !json.data?.executions || !Array.isArray(json.data.executions)) {
-      return [];
-    }
-
-    return json.data.executions.map((e): ExternalExecution => ({
-      id: Number(e.id),
-      guideNumber: e.guide_number ?? null,
-      attendanceDay: e.attendance?.date ?? '',
-      patientName: e.patient?.name?.trim() ?? '',
-    }));
+    return all;
   }
 
   async getProfessionals(): Promise<Professional[]> {
