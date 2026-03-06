@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Table2,
   LayoutGrid,
@@ -100,6 +101,7 @@ function ProfessionalCard({
 export function DashboardTablePage() {
   const navigate = useNavigate();
   const { currentMonth } = useUiStore();
+  const qc = useQueryClient();
 
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -108,6 +110,17 @@ export function DashboardTablePage() {
   const syncTrigger = useSyncTrigger();
   const { data: syncStatus } = useSyncStatus();
   const { data: syncProgress } = useSyncProgress(syncJobId);
+
+  // Invalida o dashboard e os reports quando o job de sync completa.
+  // O onSuccess do useSyncTrigger invalida imediatamente ao disparar o job,
+  // mas os dados so estao prontos quando o job termina (status === 'completed').
+  useEffect(() => {
+    if (syncJobId && syncProgress?.status === 'completed') {
+      void qc.invalidateQueries({ queryKey: ['dashboard'] });
+      void qc.invalidateQueries({ queryKey: ['report'] });
+      setSyncJobId(null);
+    }
+  }, [syncProgress, qc, syncJobId]);
 
   const { data, isLoading } = useDashboardProfessionals(currentMonth);
   const professionals = data ?? [];

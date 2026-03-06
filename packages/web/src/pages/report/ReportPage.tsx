@@ -77,6 +77,7 @@ import {
   useExcludeAppointment,
   useMarkNotificationsRead,
   useSyncTrigger,
+  useSyncProgress,
 } from '@/hooks/useApi';
 import type { Appointment, OperatorSummary, Shift, ThreadMessage } from '@/hooks/useApi';
 import {
@@ -832,6 +833,21 @@ export function ReportPage() {
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === 'super_admin' || user?.role === 'admin';
   const syncTrigger = useSyncTrigger();
+  const [syncJobId, setSyncJobId] = useState<string | null>(null);
+  const [syncProfId, setSyncProfId] = useState<number | null>(null);
+  const { data: syncProgress } = useSyncProgress(syncJobId);
+
+  // Invalida report e dashboard quando o job de sync individual completa.
+  useEffect(() => {
+    if (syncJobId && syncProgress?.status === 'completed') {
+      if (syncProfId) {
+        void queryClient.invalidateQueries({ queryKey: ['report', syncProfId, currentMonth] });
+      }
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      setSyncJobId(null);
+      setSyncProfId(null);
+    }
+  }, [syncProgress, queryClient, syncJobId, syncProfId, currentMonth]);
 
   // Set month from query param
   useMemo(() => {
@@ -959,12 +975,23 @@ export function ReportPage() {
                 onClick={() => {
                   syncTrigger.mutate(
                     { month: currentMonth, professionalId: Number(selectedId) },
-                    { onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['report', Number(selectedId), currentMonth] }) },
+                    {
+                      onSuccess: (data) => {
+                        if (data.jobId) {
+                          setSyncJobId(data.jobId);
+                          setSyncProfId(Number(selectedId));
+                        } else {
+                          // sync sincrono: invalida imediatamente
+                          void queryClient.invalidateQueries({ queryKey: ['report', Number(selectedId), currentMonth] });
+                          void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+                        }
+                      },
+                    },
                   );
                 }}
-                disabled={syncTrigger.isPending}
+                disabled={syncTrigger.isPending || syncProgress?.status === 'running'}
               >
-                <RefreshCw className={cn('size-4', syncTrigger.isPending && 'animate-spin')} />
+                <RefreshCw className={cn('size-4', (syncTrigger.isPending || syncProgress?.status === 'running') && 'animate-spin')} />
                 Atualizar Dados
               </Button>
             )}

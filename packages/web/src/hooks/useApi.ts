@@ -238,6 +238,7 @@ export function useCreateShift() {
       void queryClient.invalidateQueries({
         queryKey: ['report', variables.professionalId, variables.month],
       });
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
 }
@@ -267,6 +268,7 @@ export function useUpdateShift() {
       void queryClient.invalidateQueries({
         queryKey: ['report', variables.professionalId, variables.month],
       });
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
 }
@@ -292,6 +294,7 @@ export function useDeleteShift() {
       void queryClient.invalidateQueries({
         queryKey: ['report', variables.professionalId, variables.month],
       });
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
 }
@@ -316,6 +319,7 @@ export function useInferShifts() {
       void queryClient.invalidateQueries({
         queryKey: ['report', variables.professionalId, variables.month],
       });
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
 }
@@ -596,6 +600,7 @@ export function useExcludeAppointment() {
       api.patch<ApiResponse<unknown>>('/overrides/exclude', input).then((r) => r.data),
     onSuccess: (_, vars) => {
       void qc.invalidateQueries({ queryKey: ['report', vars.professionalId, vars.month] });
+      void qc.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
 }
