@@ -27,6 +27,13 @@ async function request<T>(endpoint: string, options: ApiOptions = {}): Promise<T
   const response = await fetch(`${API_BASE}${endpoint}`, config);
 
   if (!response.ok) {
+    if (response.status === 401) {
+      // Token expirado ou inválido — limpar estado e redirecionar ao login
+      localStorage.removeItem('cpro-token');
+      localStorage.removeItem('cpro-auth');
+      window.location.href = '/login';
+      throw new Error('Sessao expirada');
+    }
     const error = await response.json().catch(() => ({ error: 'Erro desconhecido' }));
     throw new Error(error.error ?? `HTTP ${response.status}`);
   }
