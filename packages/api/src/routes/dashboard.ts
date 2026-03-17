@@ -3,7 +3,7 @@ import { eq, and, sql, inArray } from 'drizzle-orm';
 import { authMiddleware, requireRole, type AuthEnv } from '../middleware/auth.js';
 import { externalApi } from '../services/external-api.js';
 import { db } from '../db/index.js';
-import { reportReleases, shifts, users, professionalsMirror, reportSummaryMirror } from '../db/schema.js';
+import { reportReleases, shifts, users, professionalsMirror, reportSummaryMirror, appointmentsMirror, appointmentOverrides } from '../db/schema.js';
 
 const dashboard = new Hono<AuthEnv>();
 
@@ -91,13 +91,38 @@ dashboard.get('/professionals', authMiddleware, requireRole('super_admin', 'admi
     .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   const ids = professionals.map((p) => p.id);
 
-  // Buscar summaries do mirror
+  // Buscar summaries do mirror (para taxRate)
   const summaries = ids.length > 0
     ? await db.select().from(reportSummaryMirror).where(
         and(eq(reportSummaryMirror.month, month), inArray(reportSummaryMirror.professionalId, ids))
       )
     : [];
   const summaryMap = new Map(summaries.map((s) => [s.professionalId, s]));
+
+  // Buscar appointments do mirror para recalcular revenue respeitando exclusoes
+  const allAppointments = ids.length > 0
+    ? await db.select().from(appointmentsMirror).where(
+        and(eq(appointmentsMirror.month, month), inArray(appointmentsMirror.professionalId, ids))
+      )
+    : [];
+
+  // Buscar overrides de exclusao
+  const allOverrides = ids.length > 0
+    ? await db.select().from(appointmentOverrides).where(
+        and(eq(appointmentOverrides.month, month), inArray(appointmentOverrides.professionalId, ids))
+      )
+    : [];
+  const excludedSet = new Set(
+    allOverrides.filter((o) => o.isExcluded).map((o) => `${o.externalAppointmentId}|${o.professionalId}`)
+  );
+
+  // Calcular revenue real por profissional (sem atendimentos excluidos)
+  const revenueByProf = new Map<number, number>();
+  for (const appt of allAppointments) {
+    const key = `${appt.externalId}|${appt.professionalId}`;
+    if (excludedSet.has(key)) continue;
+    revenueByProf.set(appt.professionalId, (revenueByProf.get(appt.professionalId) ?? 0) + Number(appt.value));
+  }
 
   // Fetch local shifts totals per professional
   const shiftsData = await db
@@ -120,14 +145,15 @@ dashboard.get('/professionals', authMiddleware, requireRole('super_admin', 'admi
 
   const releaseMap = new Map(releases.map((r) => [r.professionalId, r]));
 
-  // Build response
+  // Build response (revenue recalculado a partir dos appointments, respeitando exclusoes)
   const data = professionals.map((prof) => {
     const summary = summaryMap.get(prof.id);
     const shiftInfo = shiftsMap.get(prof.id);
     const release = releaseMap.get(prof.id);
 
-    const revenue = summary ? Number(summary.revenue) : 0;
-    const tax = summary ? Number(summary.tax) : 0;
+    const revenue = Math.round((revenueByProf.get(prof.id) ?? 0) * 100) / 100;
+    const taxRate = summary ? Number(summary.taxRate) : 15;
+    const tax = Math.round(revenue * (taxRate / 100) * 100) / 100;
     const shiftsCount = shiftInfo?.totalShifts ?? 0;
     const shiftsValue = Number(shiftInfo?.totalShiftsValue ?? 0);
     const netValue = Math.round((revenue - tax - shiftsValue) * 100) / 100;
@@ -172,14 +198,39 @@ dashboard.get('/my-releases', authMiddleware, async (c) => {
     return c.json({ success: true, data: [] });
   }
 
-  // Buscar summaries do mirror local
+  // Buscar summaries do mirror local (para taxRate)
   const months = releases.map((r) => r.month);
-  const summaries = months.length > 0
+  const summariesMR = months.length > 0
     ? await db.select().from(reportSummaryMirror).where(
         and(eq(reportSummaryMirror.professionalId, professionalId), inArray(reportSummaryMirror.month, months))
       )
     : [];
-  const reportByMonth = new Map(summaries.map((s) => [s.month, { revenue: Number(s.revenue), tax: Number(s.tax) }]));
+  const taxRateByMonth = new Map(summariesMR.map((s) => [s.month, Number(s.taxRate)]));
+
+  // Buscar appointments do mirror para recalcular revenue respeitando exclusoes
+  const myAppointments = months.length > 0
+    ? await db.select().from(appointmentsMirror).where(
+        and(eq(appointmentsMirror.professionalId, professionalId), inArray(appointmentsMirror.month, months))
+      )
+    : [];
+
+  // Buscar overrides de exclusao
+  const myOverrides = months.length > 0
+    ? await db.select().from(appointmentOverrides).where(
+        and(eq(appointmentOverrides.professionalId, professionalId), inArray(appointmentOverrides.month, months))
+      )
+    : [];
+  const myExcludedSet = new Set(
+    myOverrides.filter((o) => o.isExcluded).map((o) => `${o.externalAppointmentId}|${o.month}`)
+  );
+
+  // Calcular revenue real por mes (sem atendimentos excluidos)
+  const revenueByMonth = new Map<string, number>();
+  for (const appt of myAppointments) {
+    const key = `${appt.externalId}|${appt.month}`;
+    if (myExcludedSet.has(key)) continue;
+    revenueByMonth.set(appt.month, (revenueByMonth.get(appt.month) ?? 0) + Number(appt.value));
+  }
 
   // Buscar shifts agrupados por mes
   const shiftsData = await db
@@ -194,13 +245,13 @@ dashboard.get('/my-releases', authMiddleware, async (c) => {
 
   const shiftsMap = new Map(shiftsData.map((s) => [s.month, s]));
 
-  // Montar resposta
+  // Montar resposta (revenue recalculado a partir dos appointments, respeitando exclusoes)
   const data = releases.map((r) => {
-    const reportData = reportByMonth.get(r.month);
     const shiftInfo = shiftsMap.get(r.month);
 
-    const revenue = reportData?.revenue ?? 0;
-    const tax = reportData?.tax ?? 0;
+    const revenue = Math.round((revenueByMonth.get(r.month) ?? 0) * 100) / 100;
+    const taxRate = taxRateByMonth.get(r.month) ?? 15;
+    const tax = Math.round(revenue * (taxRate / 100) * 100) / 100;
     const shiftsCount = shiftInfo?.totalShifts ?? 0;
     const shiftsValue = Number(shiftInfo?.totalShiftsValue ?? 0);
     const netValue = Math.round((revenue - tax - shiftsValue) * 100) / 100;
