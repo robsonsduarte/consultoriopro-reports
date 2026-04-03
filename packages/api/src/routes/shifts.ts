@@ -206,8 +206,17 @@ shiftsRouter.post('/infer', authMiddleware, requireRole('super_admin', 'admin'),
     }
   }
 
-  // Check existing shifts to avoid duplicates
-  const existingShifts = await db
+  // Remove previously inferred shifts (keep manual ones)
+  await db
+    .delete(shifts)
+    .where(and(
+      eq(shifts.professionalId, body.professionalId),
+      eq(shifts.month, body.month),
+      eq(shifts.origin, 'inferred'),
+    ));
+
+  // Check remaining manual shifts to avoid duplicates
+  const manualShifts = await db
     .select()
     .from(shifts)
     .where(and(
@@ -215,15 +224,15 @@ shiftsRouter.post('/infer', authMiddleware, requireRole('super_admin', 'admin'),
       eq(shifts.month, body.month),
     ));
 
-  const existingKeys = new Set(
-    existingShifts.map((s) => `${s.dayOfWeek}-${s.period}`)
+  const manualKeys = new Set(
+    manualShifts.map((s) => `${s.dayOfWeek}-${s.period}`)
   );
 
-  // Create new shifts only for patterns not already covered
+  // Create new shifts only for patterns not covered by manual shifts
   const newShifts: Array<typeof shifts.$inferInsert> = [];
 
   for (const key of dayPeriodSet) {
-    if (existingKeys.has(key)) continue;
+    if (manualKeys.has(key)) continue;
 
     const [dowStr, period] = key.split('-');
     const dayOfWeek = Number(dowStr);
