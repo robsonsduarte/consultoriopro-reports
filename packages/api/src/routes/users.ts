@@ -52,7 +52,7 @@ usersRouter.get('/', authMiddleware, requireRole('super_admin', 'admin'), async 
 });
 
 // POST /users — Create user
-usersRouter.post('/', authMiddleware, requireRole('super_admin'), async (c) => {
+usersRouter.post('/', authMiddleware, requireRole('super_admin', 'admin'), async (c) => {
   const body = await c.req.json() as {
     name: string;
     email: string;
@@ -60,6 +60,13 @@ usersRouter.post('/', authMiddleware, requireRole('super_admin'), async (c) => {
     role: 'super_admin' | 'admin' | 'user';
     apiProfessionalId?: number;
   };
+
+  const authUser = c.get('user');
+
+  // Admin nao pode criar super_admin
+  if (authUser.role === 'admin' && body.role === 'super_admin') {
+    return c.json({ success: false, error: 'Apenas super_admin pode criar usuarios super_admin' }, 403);
+  }
 
   if (!body.email || !body.email.trim()) {
     return c.json({ success: false, error: 'Email obrigatorio' }, 400);
@@ -103,11 +110,13 @@ usersRouter.post('/', authMiddleware, requireRole('super_admin'), async (c) => {
 });
 
 // PUT /users/:id — Update user
-usersRouter.put('/:id', authMiddleware, requireRole('super_admin'), async (c) => {
+usersRouter.put('/:id', authMiddleware, requireRole('super_admin', 'admin'), async (c) => {
   const id = Number(c.req.param('id'));
   if (!id || isNaN(id)) {
     return c.json({ success: false, error: 'id invalido' }, 400);
   }
+
+  const authUser = c.get('user');
 
   const body = await c.req.json() as {
     name?: string;
@@ -117,6 +126,17 @@ usersRouter.put('/:id', authMiddleware, requireRole('super_admin'), async (c) =>
     apiProfessionalId?: number | null;
     isActive?: boolean;
   };
+
+  // Admin nao pode editar super_admin nem promover para super_admin
+  if (authUser.role === 'admin') {
+    const [target] = await db.select({ role: users.role }).from(users).where(eq(users.id, id)).limit(1);
+    if (target?.role === 'super_admin') {
+      return c.json({ success: false, error: 'Admin nao pode editar um super_admin' }, 403);
+    }
+    if (body.role === 'super_admin') {
+      return c.json({ success: false, error: 'Apenas super_admin pode atribuir role super_admin' }, 403);
+    }
+  }
 
   const updateData: Record<string, unknown> = {};
 
@@ -154,7 +174,7 @@ usersRouter.put('/:id', authMiddleware, requireRole('super_admin'), async (c) =>
 });
 
 // DELETE /users/:id — Soft delete (deactivate)
-usersRouter.delete('/:id', authMiddleware, requireRole('super_admin'), async (c) => {
+usersRouter.delete('/:id', authMiddleware, requireRole('super_admin', 'admin'), async (c) => {
   const id = Number(c.req.param('id'));
   if (!id || isNaN(id)) {
     return c.json({ success: false, error: 'id invalido' }, 400);
@@ -163,6 +183,14 @@ usersRouter.delete('/:id', authMiddleware, requireRole('super_admin'), async (c)
   const authUser = c.get('user');
   if (authUser.id === id) {
     return c.json({ success: false, error: 'Nao e possivel desativar seu proprio usuario' }, 400);
+  }
+
+  // Admin nao pode excluir super_admin
+  if (authUser.role === 'admin') {
+    const [target] = await db.select({ role: users.role }).from(users).where(eq(users.id, id)).limit(1);
+    if (target?.role === 'super_admin') {
+      return c.json({ success: false, error: 'Admin nao pode excluir um super_admin' }, 403);
+    }
   }
 
   const [updated] = await db
@@ -179,10 +207,19 @@ usersRouter.delete('/:id', authMiddleware, requireRole('super_admin'), async (c)
 });
 
 // POST /users/:id/reset-password — Reset to temporary password
-usersRouter.post('/:id/reset-password', authMiddleware, requireRole('super_admin'), async (c) => {
+usersRouter.post('/:id/reset-password', authMiddleware, requireRole('super_admin', 'admin'), async (c) => {
   const id = Number(c.req.param('id'));
   if (!id || isNaN(id)) {
     return c.json({ success: false, error: 'id invalido' }, 400);
+  }
+
+  // Admin nao pode resetar senha de super_admin
+  const authUser = c.get('user');
+  if (authUser.role === 'admin') {
+    const [target] = await db.select({ role: users.role }).from(users).where(eq(users.id, id)).limit(1);
+    if (target?.role === 'super_admin') {
+      return c.json({ success: false, error: 'Admin nao pode resetar senha de um super_admin' }, 403);
+    }
   }
 
   const tempPassword = generateTempPassword();
