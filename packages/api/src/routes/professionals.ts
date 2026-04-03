@@ -25,11 +25,15 @@ professionals.get('/', authMiddleware, requireRole('super_admin', 'admin'), asyn
   // Fallback: se mirror vazio, usar API externa (pre-sync)
   if (mirrorProfessionals.length === 0) {
     const list = await externalApi.getProfessionals();
-    const filtered = list.filter((p) => activeIds.has(p.id));
+    const filtered = list
+      .filter((p) => activeIds.has(p.id))
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
     return c.json({ success: true, data: filtered });
   }
 
-  const filtered = mirrorProfessionals.map((p) => ({ id: p.externalId, name: p.name, specialty: p.specialty }));
+  const filtered = mirrorProfessionals
+    .map((p) => ({ id: p.externalId, name: p.name, specialty: p.specialty }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   return c.json({ success: true, data: filtered });
 });
 

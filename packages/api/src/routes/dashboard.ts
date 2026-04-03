@@ -80,11 +80,14 @@ dashboard.get('/professionals', authMiddleware, requireRole('super_admin', 'admi
       };
     });
 
+    dataFb.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
     return c.json({ success: true, data: dataFb });
   }
 
   // Mirror path — leitura local (< 100ms)
-  const professionals = mirrorProfessionals.map((p) => ({ id: p.externalId, name: p.name, specialty: p.specialty }));
+  const professionals = mirrorProfessionals
+    .map((p) => ({ id: p.externalId, name: p.name, specialty: p.specialty }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   const ids = professionals.map((p) => p.id);
 
   // Buscar summaries do mirror
