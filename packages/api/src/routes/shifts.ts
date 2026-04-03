@@ -176,23 +176,34 @@ shiftsRouter.post('/infer', authMiddleware, requireRole('super_admin', 'admin'),
     online: getConfigValue('shift_online') ?? 650,
   };
 
-  // Analyze appointments to identify work days
-  // For each day with appointments, create both morning + afternoon shifts
-  // (API externa nao tem horario, so data — padrao real e turno cheio)
-  const workDays = new Set<number>();
+  // Analyze appointments to identify work patterns by day-of-week + period
+  // Period: morning = before 12:00, afternoon = 12:00+
+  // Minimum 3 appointments per day/period to count as a shift
+  const MIN_APPTS_PER_SHIFT = 3;
+  const dayPeriodCounts = new Map<string, number>();
 
   for (const appt of report.appointments) {
     const date = new Date(appt.date + 'T12:00:00');
     const dow = date.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
     if (dow === 0) continue; // Skip sunday
-    workDays.add(dow);
+
+    // Determine period from appointment time
+    let period: 'morning' | 'afternoon' = 'morning';
+    if (appt.time) {
+      const hour = parseInt(appt.time.split(':')[0]!, 10);
+      if (hour >= 12) period = 'afternoon';
+    }
+
+    const key = `${dow}-${period}`;
+    dayPeriodCounts.set(key, (dayPeriodCounts.get(key) ?? 0) + 1);
   }
 
-  // Expand to morning + afternoon for each work day
+  // Only keep day/period combos with >= MIN_APPTS_PER_SHIFT appointments
   const dayPeriodSet = new Set<string>();
-  for (const dow of workDays) {
-    dayPeriodSet.add(`${dow}-morning`);
-    dayPeriodSet.add(`${dow}-afternoon`);
+  for (const [key, count] of dayPeriodCounts) {
+    if (count >= MIN_APPTS_PER_SHIFT) {
+      dayPeriodSet.add(key);
+    }
   }
 
   // Check existing shifts to avoid duplicates
