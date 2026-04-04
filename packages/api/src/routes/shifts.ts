@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { eq, and } from 'drizzle-orm';
 import { authMiddleware, requireRole, type AuthEnv } from '../middleware/auth.js';
 import { externalApi } from '../services/external-api.js';
+import { getHolidays } from '../services/holidays.js';
 import { db } from '../db/index.js';
 import { shifts, professionalConfig } from '../db/schema.js';
 
@@ -209,10 +210,16 @@ shiftsRouter.post('/infer', authMiddleware, requireRole('super_admin', 'admin'),
   const mon = Number(monStr);
   const daysInMonth = new Date(year, mon, 0).getDate();
 
-  const weekdayOccurrences = new Map<number, number>(); // dow -> count of weeks
+  const holidays = getHolidays(year);
+
+  // Count useful weekday occurrences (excluding holidays)
+  const weekdayOccurrences = new Map<number, number>(); // dow -> useful weeks
   for (let d = 1; d <= daysInMonth; d++) {
-    const dow = new Date(year, mon - 1, d).getDay();
+    const date = new Date(year, mon - 1, d);
+    const dow = date.getDay();
     if (dow === 0) continue;
+    const dateStr = `${year}-${String(mon).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    if (holidays.has(dateStr)) continue; // Skip holidays
     weekdayOccurrences.set(dow, (weekdayOccurrences.get(dow) ?? 0) + 1);
   }
 
@@ -225,11 +232,13 @@ shiftsRouter.post('/infer', authMiddleware, requireRole('super_admin', 'admin'),
     }
   }
 
-  // Step 4: Shift is valid if >= 3 weeks of that weekday qualified
-  const MIN_QUALIFYING_WEEKS = 3;
+  // Step 4: Shift is valid if professional attended ALL useful weeks
+  // (qualifying weeks >= useful weeks for that day-of-week)
   const dayPeriodSet = new Set<string>();
   for (const [dowPeriod, weeks] of qualifyingWeeks) {
-    if (weeks >= MIN_QUALIFYING_WEEKS) {
+    const dow = Number(dowPeriod.split('-')[0]);
+    const usefulWeeks = weekdayOccurrences.get(dow) ?? 0;
+    if (usefulWeeks > 0 && weeks >= usefulWeeks) {
       dayPeriodSet.add(dowPeriod);
     }
   }
