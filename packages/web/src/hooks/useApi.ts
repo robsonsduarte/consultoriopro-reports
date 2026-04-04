@@ -29,6 +29,7 @@ export interface ProfessionalReport {
   revenue: number;
   tax: number;
   shifts: number;
+  shiftsValue: number;
   netValue: number;
   status: ReleaseStatus | null;
   releaseId: number | null;

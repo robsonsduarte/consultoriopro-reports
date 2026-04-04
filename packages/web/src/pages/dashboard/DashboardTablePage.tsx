@@ -153,9 +153,10 @@ export function DashboardTablePage() {
         revenue: acc.revenue + p.revenue,
         tax: acc.tax + p.tax,
         shifts: acc.shifts + p.shifts,
+        shiftsValue: acc.shiftsValue + (p.shiftsValue ?? 0),
         netValue: acc.netValue + p.netValue,
       }),
-      { revenue: 0, tax: 0, shifts: 0, netValue: 0 },
+      { revenue: 0, tax: 0, shifts: 0, shiftsValue: 0, netValue: 0 },
     );
   }, [professionals]);
 
@@ -222,6 +223,7 @@ export function DashboardTablePage() {
             <StatCard
               title="Total Turnos"
               value={String(totals.shifts)}
+              subtitle={formatCurrency(totals.shiftsValue)}
               icon={Clock}
             />
             <StatCard
