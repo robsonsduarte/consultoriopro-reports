@@ -176,33 +176,62 @@ shiftsRouter.post('/infer', authMiddleware, requireRole('super_admin', 'admin'),
     online: getConfigValue('shift_online') ?? 650,
   };
 
-  // Analyze appointments to identify work patterns by day-of-week + period
-  // Period: morning = before 12:00, afternoon = 12:00+
-  // Minimum 3 appointments per day/period to count as a shift
-  const MIN_APPTS_PER_SHIFT = 3;
-  const dayPeriodCounts = new Map<string, number>();
+  // Analyze appointments to identify consistent work patterns
+  // Rule: a shift (dow+period) is valid only if the professional had >= 3
+  // appointments in that period on ALL occurrences of that weekday in the month
+  const MIN_APPTS_PER_DAY = 3;
+
+  // Step 1: Count appointments per specific date + period
+  // Key: "date|dow-period", e.g. "2026-03-02|1-afternoon"
+  const dateApptCounts = new Map<string, number>();
+  const dateToDowPeriod = new Map<string, string>();
 
   for (const appt of report.appointments) {
     const date = new Date(appt.date + 'T12:00:00');
     const dow = date.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
     if (dow === 0) continue; // Skip sunday
 
-    // Determine period from appointment time
     let period: 'morning' | 'afternoon' = 'morning';
     if (appt.time) {
       const hour = parseInt(appt.time.split(':')[0]!, 10);
       if (hour >= 12) period = 'afternoon';
     }
 
-    const key = `${dow}-${period}`;
-    dayPeriodCounts.set(key, (dayPeriodCounts.get(key) ?? 0) + 1);
+    const dowPeriod = `${dow}-${period}`;
+    const dateKey = `${appt.date}|${dowPeriod}`;
+    dateApptCounts.set(dateKey, (dateApptCounts.get(dateKey) ?? 0) + 1);
+    dateToDowPeriod.set(dateKey, dowPeriod);
   }
 
-  // Only keep day/period combos with >= MIN_APPTS_PER_SHIFT appointments
+  // Step 2: Calculate all weekday occurrences in the month
+  const [yearStr, monStr] = body.month.split('-');
+  const year = Number(yearStr);
+  const mon = Number(monStr);
+  const daysInMonth = new Date(year, mon, 0).getDate();
+
+  const weekdayOccurrences = new Map<number, number>(); // dow -> count of weeks
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dow = new Date(year, mon - 1, d).getDay();
+    if (dow === 0) continue;
+    weekdayOccurrences.set(dow, (weekdayOccurrences.get(dow) ?? 0) + 1);
+  }
+
+  // Step 3: For each dow+period, count weeks with >= MIN_APPTS_PER_DAY
+  const qualifyingWeeks = new Map<string, number>();
+  for (const [dateKey, count] of dateApptCounts) {
+    const dowPeriod = dateToDowPeriod.get(dateKey)!;
+    if (count >= MIN_APPTS_PER_DAY) {
+      qualifyingWeeks.set(dowPeriod, (qualifyingWeeks.get(dowPeriod) ?? 0) + 1);
+    }
+  }
+
+  // Step 4: Shift is valid only if ALL weeks of that weekday qualified
   const dayPeriodSet = new Set<string>();
-  for (const [key, count] of dayPeriodCounts) {
-    if (count >= MIN_APPTS_PER_SHIFT) {
-      dayPeriodSet.add(key);
+  for (const [dowPeriod, weeks] of qualifyingWeeks) {
+    const dow = Number(dowPeriod.split('-')[0]);
+    const totalWeeks = weekdayOccurrences.get(dow) ?? 0;
+    if (weeks >= totalWeeks) {
+      dayPeriodSet.add(dowPeriod);
     }
   }
 
