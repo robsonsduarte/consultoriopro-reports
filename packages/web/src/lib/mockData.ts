@@ -221,8 +221,8 @@ export interface MockShift {
 // ---------------------------------------------------------------------------
 
 export const mockShiftConfig = {
-  shiftPresencial: 850,
-  shiftOnline: 650,
+  shiftPresencial: 450,
+  shiftOnline: 350,
 };
 
 // ---------------------------------------------------------------------------

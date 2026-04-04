@@ -211,7 +211,7 @@ function ProfessionalTab() {
                   type="number"
                   min={0}
                   step={0.01}
-                  placeholder={String(globalConfig?.shiftPresencial ?? 850)}
+                  placeholder={String(globalConfig?.shiftPresencial ?? 450)}
                   value={shiftPresencial}
                   onChange={(e) => setShiftPresencial(e.target.value)}
                 />
@@ -224,7 +224,7 @@ function ProfessionalTab() {
                   type="number"
                   min={0}
                   step={0.01}
-                  placeholder={String(globalConfig?.shiftOnline ?? 650)}
+                  placeholder={String(globalConfig?.shiftOnline ?? 350)}
                   value={shiftOnline}
                   onChange={(e) => setShiftOnline(e.target.value)}
                 />

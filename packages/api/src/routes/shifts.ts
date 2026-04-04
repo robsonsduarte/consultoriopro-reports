@@ -173,8 +173,8 @@ shiftsRouter.post('/infer', authMiddleware, requireRole('super_admin', 'admin'),
   }
 
   const shiftValues = {
-    presencial: getConfigValue('shift_presencial') ?? 850,
-    online: getConfigValue('shift_online') ?? 650,
+    presencial: getConfigValue('shift_presencial') ?? 450,
+    online: getConfigValue('shift_online') ?? 350,
   };
 
   // Analyze appointments to identify consistent work patterns
