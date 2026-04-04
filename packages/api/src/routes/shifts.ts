@@ -225,12 +225,11 @@ shiftsRouter.post('/infer', authMiddleware, requireRole('super_admin', 'admin'),
     }
   }
 
-  // Step 4: Shift is valid only if ALL weeks of that weekday qualified
+  // Step 4: Shift is valid if >= 3 weeks of that weekday qualified
+  const MIN_QUALIFYING_WEEKS = 3;
   const dayPeriodSet = new Set<string>();
   for (const [dowPeriod, weeks] of qualifyingWeeks) {
-    const dow = Number(dowPeriod.split('-')[0]);
-    const totalWeeks = weekdayOccurrences.get(dow) ?? 0;
-    if (weeks >= totalWeeks) {
+    if (weeks >= MIN_QUALIFYING_WEEKS) {
       dayPeriodSet.add(dowPeriod);
     }
   }
