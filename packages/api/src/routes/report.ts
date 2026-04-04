@@ -108,7 +108,8 @@ report.get('/:professionalId', authMiddleware, async (c) => {
           guideNumber,
         };
       })
-      .filter((a): a is NonNullable<typeof a> => a !== null);
+      .filter((a): a is NonNullable<typeof a> => a !== null)
+      .sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? '').localeCompare(b.time ?? ''));
 
     const localShiftsFb = await db
       .select()
@@ -214,7 +215,8 @@ report.get('/:professionalId', authMiddleware, async (c) => {
         guideNumber: a.guideNumber,
       };
     })
-    .filter((a): a is NonNullable<typeof a> => a !== null);
+    .filter((a): a is NonNullable<typeof a> => a !== null)
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? '').localeCompare(b.time ?? ''));
 
   // Professional info do mirror
   const professional = mirrorProfessional
