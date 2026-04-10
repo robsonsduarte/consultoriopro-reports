@@ -10,6 +10,29 @@ interface ApiResponse<T> {
   success: boolean;
   data: T;
   error?: string;
+  meta?: ReportSnapshotMeta;
+}
+
+// ---------------------------------------------------------------------------
+// Snapshots versionados
+// ---------------------------------------------------------------------------
+
+export interface ReportSnapshotMeta {
+  source: 'live' | 'snapshot';
+  snapshotId?: number;
+  version?: number;
+  name?: string;
+  createdAt?: string;
+}
+
+export interface ReportSnapshot {
+  id: number;
+  month: string;
+  version: number;
+  name: string;
+  isActive: boolean;
+  createdBy: number;
+  createdAt: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -90,6 +113,12 @@ export interface Report {
   operators: OperatorSummary[];
   shifts: Shift[];
   thread: ThreadMessage[];
+  meta?: ReportSnapshotMeta;
+}
+
+export interface DashboardProfessionalsResult {
+  professionals: ProfessionalReport[];
+  meta?: ReportSnapshotMeta;
 }
 
 export interface User {
@@ -148,30 +177,104 @@ export function useProfessionals() {
 }
 
 /** Dashboard: profissionais com dados financeiros do mes */
-export function useDashboardProfessionals(month: string) {
+export function useDashboardProfessionals(
+  month: string,
+  source?: 'live' | 'snapshot',
+) {
   return useQuery({
-    queryKey: ['dashboard', 'professionals', month],
-    queryFn: () =>
-      api
+    queryKey: ['dashboard', 'professionals', month, source ?? 'auto'],
+    queryFn: () => {
+      const qs = new URLSearchParams({ month });
+      if (source) qs.set('source', source);
+      return api
         .get<ApiResponse<ProfessionalReport[]>>(
-          `/dashboard/professionals?month=${month}`,
+          `/dashboard/professionals?${qs.toString()}`,
         )
-        .then((r) => r.data),
+        .then<DashboardProfessionalsResult>((r) => ({
+          professionals: r.data,
+          meta: r.meta,
+        }));
+    },
     staleTime: 2 * 60 * 1000,
     enabled: !!month,
   });
 }
 
 /** Relatorio completo de um profissional no mes */
-export function useReport(professionalId: number, month: string) {
+export function useReport(
+  professionalId: number,
+  month: string,
+  source?: 'live' | 'snapshot',
+) {
   return useQuery({
-    queryKey: ['report', professionalId, month],
-    queryFn: () =>
-      api
-        .get<ApiResponse<Report>>(`/report/${professionalId}?month=${month}`)
-        .then((r) => r.data),
+    queryKey: ['report', professionalId, month, source ?? 'auto'],
+    queryFn: () => {
+      const qs = new URLSearchParams({ month });
+      if (source) qs.set('source', source);
+      return api
+        .get<ApiResponse<Report>>(`/report/${professionalId}?${qs.toString()}`)
+        .then((r) => r.data);
+    },
     staleTime: 2 * 60 * 1000,
     enabled: !!professionalId && !!month,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Snapshots hooks
+// ---------------------------------------------------------------------------
+
+export function useSnapshots(month: string) {
+  return useQuery({
+    queryKey: ['snapshots', month],
+    queryFn: () =>
+      api
+        .get<ApiResponse<ReportSnapshot[]>>(`/snapshots?month=${month}`)
+        .then((r) => r.data),
+    staleTime: 30 * 1000,
+    enabled: !!month,
+  });
+}
+
+export function useSaveSnapshot() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (month: string) =>
+      api
+        .post<ApiResponse<ReportSnapshot>>('/snapshots', { month })
+        .then((r) => r.data),
+    onSuccess: (_data, month) => {
+      void qc.invalidateQueries({ queryKey: ['snapshots', month] });
+      void qc.invalidateQueries({ queryKey: ['dashboard'] });
+      void qc.invalidateQueries({ queryKey: ['report'] });
+    },
+  });
+}
+
+export function useRestoreSnapshot() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) =>
+      api
+        .post<ApiResponse<ReportSnapshot>>(`/snapshots/${id}/restore`, {})
+        .then((r) => r.data),
+    onSuccess: (data) => {
+      void qc.invalidateQueries({ queryKey: ['snapshots', data.month] });
+      void qc.invalidateQueries({ queryKey: ['dashboard'] });
+      void qc.invalidateQueries({ queryKey: ['report'] });
+    },
+  });
+}
+
+export function useDeleteSnapshot() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, month }: { id: number; month: string }) =>
+      api.delete<ApiResponse<null>>(`/snapshots/${id}`).then((r) => r.data ?? null).then(() => month),
+    onSuccess: (month) => {
+      void qc.invalidateQueries({ queryKey: ['snapshots', month] });
+      void qc.invalidateQueries({ queryKey: ['dashboard'] });
+    },
   });
 }
 

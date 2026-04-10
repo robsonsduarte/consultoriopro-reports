@@ -28,6 +28,7 @@ import { ShiftFormModal } from '@/components/domain/ShiftFormModal';
 import { StatCard } from '@/components/domain/StatCard';
 import { ConfirmDialog } from '@/components/domain/ConfirmDialog';
 import { SortableHeader } from '@/components/domain/SortableHeader';
+import { SnapshotVersionBadge } from '@/components/domain/SnapshotVersionBadge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -867,10 +868,15 @@ export function ReportPage() {
     }
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Dados reais via API
+  // Dados reais via API — honra ?source=live|snapshot na URL
+  const sourceParam = searchParams.get('source');
+  const source: 'live' | 'snapshot' | undefined =
+    sourceParam === 'live' ? 'live' : sourceParam === 'snapshot' ? 'snapshot' : undefined;
+
   const { data: report, isLoading: reportLoading } = useReport(
     Number(selectedId),
     currentMonth,
+    source,
   );
 
   const professional = report?.professional ?? null;
@@ -953,7 +959,10 @@ export function ReportPage() {
               <FileText className="size-5" />
             </div>
             <div>
-              <h1 className="text-xl font-semibold">Relatorio</h1>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-xl font-semibold">Relatorio</h1>
+                <SnapshotVersionBadge meta={report?.meta} />
+              </div>
               <p className="text-sm text-muted-foreground">
                 {professional?.name ?? 'Profissional'} &middot; {formatMonth(currentMonth)}
               </p>
@@ -964,7 +973,11 @@ export function ReportPage() {
             {isAdmin && (
               <ProfessionalSelect
                 value={selectedId}
-                onChange={(newId) => navigate(`/report/${newId}?month=${currentMonth}`)}
+                onChange={(newId) => {
+                  const qs = new URLSearchParams({ month: currentMonth });
+                  if (source) qs.set('source', source);
+                  navigate(`/report/${newId}?${qs.toString()}`);
+                }}
                 className="w-full sm:w-72"
               />
             )}

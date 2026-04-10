@@ -10,6 +10,7 @@ import {
   pgEnum,
   uniqueIndex,
   index,
+  jsonb,
 } from 'drizzle-orm/pg-core';
 
 // Enums
@@ -123,15 +124,51 @@ export const banks = pgTable('banks', {
   name: varchar('name', { length: 255 }).notNull(),
 });
 
-// Report Snapshots (cache de dados da API externa)
+// Report Snapshots — versoes imutaveis do dashboard mensal.
+// Cada snapshot captura o estado completo do mes (todos profissionais)
+// num ponto no tempo, para congelar totais mesmo apos re-sync da API externa.
 export const reportSnapshots = pgTable('report_snapshots', {
   id: serial('id').primaryKey(),
-  professionalId: integer('professional_id').notNull(),
   month: varchar('month', { length: 7 }).notNull(), // YYYY-MM
-  data: text('data').notNull(), // JSON stringified (appointments, operators, summary)
-  fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+  version: integer('version').notNull(),
+  name: varchar('name', { length: 64 }).notNull(), // "fev_2026_v1"
+  isActive: boolean('is_active').notNull().default(false),
+  data: jsonb('data').notNull(), // DashboardData serializado (totais + meta agregada)
+  createdBy: integer('created_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
-  uniqueIndex('uq_snapshot_professional_month').on(t.professionalId, t.month),
+  uniqueIndex('uq_snapshot_month_version').on(t.month, t.version),
+  index('idx_snapshot_month_active').on(t.month, t.isActive),
+]);
+
+export const reportSnapshotAppointments = pgTable('report_snapshot_appointments', {
+  id: serial('id').primaryKey(),
+  snapshotId: integer('snapshot_id').notNull().references(() => reportSnapshots.id, { onDelete: 'cascade' }),
+  professionalId: integer('professional_id').notNull(),
+  externalAppointmentId: integer('external_appointment_id').notNull(),
+  date: varchar('date', { length: 10 }).notNull(),
+  time: varchar('time', { length: 8 }).notNull().default(''),
+  patientName: varchar('patient_name', { length: 255 }).notNull(),
+  operatorName: varchar('operator_name', { length: 255 }).notNull().default(''),
+  guideNumber: varchar('guide_number', { length: 100 }),
+  value: numeric('value', { precision: 10, scale: 2 }).notNull(),
+  isPaid: boolean('is_paid').notNull().default(false),
+  isExcluded: boolean('is_excluded').notNull().default(false),
+}, (t) => [
+  index('idx_snap_appt_snapshot_prof').on(t.snapshotId, t.professionalId),
+]);
+
+export const reportSnapshotShifts = pgTable('report_snapshot_shifts', {
+  id: serial('id').primaryKey(),
+  snapshotId: integer('snapshot_id').notNull().references(() => reportSnapshots.id, { onDelete: 'cascade' }),
+  professionalId: integer('professional_id').notNull(),
+  dayOfWeek: integer('day_of_week').notNull(),
+  period: shiftPeriodEnum('period').notNull(),
+  modality: shiftModalityEnum('modality').notNull(),
+  shiftValue: numeric('shift_value', { precision: 10, scale: 2 }).notNull(),
+  origin: varchar('origin', { length: 50 }).notNull().default('manual'),
+}, (t) => [
+  index('idx_snap_shift_snapshot_prof').on(t.snapshotId, t.professionalId),
 ]);
 
 // Appointment Overrides (flags locais sobre atendimentos da API externa)

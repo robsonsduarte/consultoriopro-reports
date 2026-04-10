@@ -4,14 +4,50 @@ import { authMiddleware, requireRole, type AuthEnv } from '../middleware/auth.js
 import { externalApi } from '../services/external-api.js';
 import { db } from '../db/index.js';
 import { reportReleases, shifts, users, professionalsMirror, reportSummaryMirror, appointmentsMirror, appointmentOverrides } from '../db/schema.js';
+import {
+  getActiveSnapshot,
+  buildDashboardFromSnapshot,
+  type SnapshotMeta,
+} from '../services/report-snapshots.service.js';
 
 const dashboard = new Hono<AuthEnv>();
 
-// GET /dashboard/professionals?month=YYYY-MM
+// GET /dashboard/professionals?month=YYYY-MM&source=live|snapshot
 dashboard.get('/professionals', authMiddleware, requireRole('super_admin', 'admin'), async (c) => {
   const month = c.req.query('month');
+  const sourceParam = c.req.query('source');
   if (!month || !/^\d{4}-\d{2}$/.test(month)) {
     return c.json({ success: false, error: 'Query param month obrigatorio (YYYY-MM)' }, 400);
+  }
+
+  // Decidir fonte: snapshot ativo (default) ou live
+  const activeSnapshot = await getActiveSnapshot(month);
+  const wantsLive = sourceParam === 'live';
+  if (!wantsLive && activeSnapshot) {
+    const data = buildDashboardFromSnapshot(activeSnapshot);
+    // Releases sempre vem do live — status/isPaid podem ter mudado apos snapshot
+    const releases = await db
+      .select()
+      .from(reportReleases)
+      .where(eq(reportReleases.month, month));
+    const releaseMap = new Map(releases.map((r) => [r.professionalId, r]));
+    const merged = data.map((row) => {
+      const release = releaseMap.get(row.id);
+      return {
+        ...row,
+        status: release?.status ?? row.status,
+        releaseId: release?.id ?? row.releaseId,
+        isPaid: release?.isPaid ?? row.isPaid,
+      };
+    });
+    const meta: SnapshotMeta = {
+      source: 'snapshot',
+      snapshotId: activeSnapshot.id,
+      version: activeSnapshot.version,
+      name: activeSnapshot.name,
+      createdAt: activeSnapshot.createdAt.toISOString(),
+    };
+    return c.json({ success: true, data: merged, meta });
   }
 
   // Buscar profissionais ativos da tabela local (vinculados via apiProfessionalId)
@@ -82,7 +118,8 @@ dashboard.get('/professionals', authMiddleware, requireRole('super_admin', 'admi
     });
 
     dataFb.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-    return c.json({ success: true, data: dataFb });
+    const metaFb: SnapshotMeta = { source: 'live' };
+    return c.json({ success: true, data: dataFb, meta: metaFb });
   }
 
   // Mirror path — leitura local (< 100ms)
@@ -174,7 +211,8 @@ dashboard.get('/professionals', authMiddleware, requireRole('super_admin', 'admi
     };
   });
 
-  return c.json({ success: true, data });
+  const meta: SnapshotMeta = { source: 'live' };
+  return c.json({ success: true, data, meta });
 });
 
 // GET /dashboard/my-releases — Historico de releases do profissional logado

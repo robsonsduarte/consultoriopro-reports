@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import {
   Table2,
   LayoutGrid,
@@ -12,6 +13,12 @@ import {
   Clock,
   Banknote,
   RefreshCw,
+  Save,
+  History,
+  Eye,
+  Trash2,
+  RotateCcw,
+  Check,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { StatusSummaryBar } from '@/components/domain/StatusSummaryBar';
@@ -19,13 +26,24 @@ import { ReleaseStatusBadge } from '@/components/domain/ReleaseStatusBadge';
 import { SortableHeader } from '@/components/domain/SortableHeader';
 import { ConfirmDialog } from '@/components/domain/ConfirmDialog';
 import { StatCard } from '@/components/domain/StatCard';
+import { SnapshotVersionBadge } from '@/components/domain/SnapshotVersionBadge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
 import { useSortableTable } from '@/hooks/useSortableTable';
-import { useDashboardProfessionals, useReleaseAll, useSyncTrigger, useSyncStatus, useSyncProgress } from '@/hooks/useApi';
-import type { ProfessionalReport } from '@/hooks/useApi';
+import {
+  useDashboardProfessionals,
+  useReleaseAll,
+  useSyncTrigger,
+  useSyncStatus,
+  useSyncProgress,
+  useSnapshots,
+  useSaveSnapshot,
+  useRestoreSnapshot,
+  useDeleteSnapshot,
+} from '@/hooks/useApi';
+import type { ProfessionalReport, ReportSnapshot } from '@/hooks/useApi';
 import { formatCurrency, formatMonth } from '@/lib/format';
 import { useUiStore } from '@/stores/uiStore';
 import { cn } from '@/lib/utils';
@@ -106,14 +124,27 @@ export function DashboardTablePage() {
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [syncJobId, setSyncJobId] = useState<string | null>(null);
+  const [source, setSource] = useState<'live' | 'snapshot' | undefined>(undefined);
+  const [snapshotsMenuOpen, setSnapshotsMenuOpen] = useState(false);
+  const [restoreTarget, setRestoreTarget] = useState<ReportSnapshot | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ReportSnapshot | null>(null);
   const releaseAll = useReleaseAll();
   const syncTrigger = useSyncTrigger();
   const { data: syncStatus } = useSyncStatus();
   const { data: syncProgress } = useSyncProgress(syncJobId);
 
+  // Snapshots do mes corrente
+  const { data: snapshots = [] } = useSnapshots(currentMonth);
+  const saveSnapshot = useSaveSnapshot();
+  const restoreSnapshot = useRestoreSnapshot();
+  const deleteSnapshot = useDeleteSnapshot();
+
+  // Reset do source toggle ao trocar de mes
+  useEffect(() => {
+    setSource(undefined);
+  }, [currentMonth]);
+
   // Invalida o dashboard e os reports quando o job de sync completa.
-  // O onSuccess do useSyncTrigger invalida imediatamente ao disparar o job,
-  // mas os dados so estao prontos quando o job termina (status === 'completed').
   useEffect(() => {
     if (syncJobId && syncProgress?.status === 'completed') {
       void qc.invalidateQueries({ queryKey: ['dashboard'] });
@@ -122,8 +153,10 @@ export function DashboardTablePage() {
     }
   }, [syncProgress, qc, syncJobId]);
 
-  const { data, isLoading } = useDashboardProfessionals(currentMonth);
-  const professionals = data ?? [];
+  const { data: dashboardResult, isLoading } = useDashboardProfessionals(currentMonth, source);
+  const professionals = dashboardResult?.professionals ?? [];
+  const meta = dashboardResult?.meta;
+  const hasActiveSnapshot = snapshots.some((s) => s.isActive);
 
   const { sorted, sortKey, sortDir, toggleSort } = useSortableTable<ProfessionalReport>(
     professionals,
@@ -161,7 +194,56 @@ export function DashboardTablePage() {
   }, [professionals]);
 
   function handleRowClick(professional: ProfessionalReport) {
-    navigate(`/report/${professional.id}?month=${currentMonth}`);
+    const qs = new URLSearchParams({ month: currentMonth });
+    const effectiveSource = source ?? (meta?.source === 'live' ? 'live' : undefined);
+    if (effectiveSource) qs.set('source', effectiveSource);
+    navigate(`/report/${professional.id}?${qs.toString()}`);
+  }
+
+  function handleSaveSnapshot() {
+    saveSnapshot.mutate(currentMonth, {
+      onSuccess: (snap) => {
+        toast.success(`Versao ${snap.name} salva com sucesso`);
+        setSource(undefined);
+      },
+      onError: (err) => {
+        const msg = err instanceof Error ? err.message : 'Erro ao salvar versao';
+        toast.error(msg);
+      },
+    });
+  }
+
+  function handleRestoreSnapshot() {
+    if (!restoreTarget) return;
+    restoreSnapshot.mutate(restoreTarget.id, {
+      onSuccess: (snap) => {
+        toast.success(`Versao ${snap.name} restaurada`);
+        setRestoreTarget(null);
+        setSnapshotsMenuOpen(false);
+        setSource(undefined);
+      },
+      onError: (err) => {
+        const msg = err instanceof Error ? err.message : 'Erro ao restaurar';
+        toast.error(msg);
+      },
+    });
+  }
+
+  function handleDeleteSnapshot() {
+    if (!deleteTarget) return;
+    deleteSnapshot.mutate(
+      { id: deleteTarget.id, month: currentMonth },
+      {
+        onSuccess: () => {
+          toast.success(`Versao ${deleteTarget.name} removida`);
+          setDeleteTarget(null);
+        },
+        onError: (err) => {
+          const msg = err instanceof Error ? err.message : 'Erro ao remover';
+          toast.error(msg);
+        },
+      },
+    );
   }
 
   function handleExportCsv() {
@@ -197,13 +279,115 @@ export function DashboardTablePage() {
       <div className="space-y-6">
         {/* Cabecalho da pagina */}
         <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-bold">Dashboard</h1>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl font-bold">Dashboard</h1>
+            <SnapshotVersionBadge meta={meta} />
+          </div>
           <p className="text-sm text-muted-foreground">{monthLabel}</p>
           {syncStatus?.lastSync && (
             <p className="text-xs text-muted-foreground">
               Dados atualizados em: {new Date(syncStatus.lastSync).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
             </p>
           )}
+        </div>
+
+        {/* Barra de versoes */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-lg border bg-muted/30 p-3">
+          <div className="text-xs text-muted-foreground">
+            {hasActiveSnapshot
+              ? 'Versao salva exibindo dados congelados. Re-sincronizacoes nao afetam versoes salvas.'
+              : 'Nenhuma versao salva. Os dados exibidos sao live (atualizados em cada sincronizacao).'}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {hasActiveSnapshot && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSource(source === 'live' ? undefined : 'live')}
+              >
+                <Eye className="size-4" />
+                <span className="hidden sm:inline">
+                  {source === 'live' ? 'Ver versao salva' : 'Ver live'}
+                </span>
+              </Button>
+            )}
+            {snapshots.length > 0 && (
+              <div className="relative">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSnapshotsMenuOpen((v) => !v)}
+                >
+                  <History className="size-4" />
+                  <span>Versoes ({snapshots.length})</span>
+                </Button>
+                {snapshotsMenuOpen && (
+                  <div
+                    className="absolute right-0 mt-1 w-80 rounded-md border bg-popover shadow-lg z-50"
+                    onMouseLeave={() => setSnapshotsMenuOpen(false)}
+                  >
+                    <div className="p-2 text-xs font-medium text-muted-foreground border-b">
+                      Historico de versoes
+                    </div>
+                    <ul className="max-h-96 overflow-y-auto">
+                      {snapshots.map((snap) => (
+                        <li
+                          key={snap.id}
+                          className="flex items-center justify-between gap-2 p-2 hover:bg-muted/50 border-b last:border-b-0"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium truncate flex items-center gap-1.5">
+                              {snap.name}
+                              {snap.isActive && (
+                                <Check className="size-3.5 text-green-600" />
+                              )}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(snap.createdAt).toLocaleString('pt-BR', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </p>
+                          </div>
+                          {!snap.isActive && (
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                                title="Restaurar"
+                                onClick={() => setRestoreTarget(snap)}
+                              >
+                                <RotateCcw className="size-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                                title="Deletar"
+                                onClick={() => setDeleteTarget(snap)}
+                              >
+                                <Trash2 className="size-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+            <Button
+              size="sm"
+              onClick={handleSaveSnapshot}
+              disabled={saveSnapshot.isPending || isLoading || professionals.length === 0}
+            >
+              <Save className="size-4" />
+              <span>{saveSnapshot.isPending ? 'Salvando...' : 'Salvar versao'}</span>
+            </Button>
+          </div>
         </div>
 
         {/* Summary stats — so mostra quando tem dados */}
@@ -486,6 +670,28 @@ export function DashboardTablePage() {
         description={`Esta acao vai liberar ${pendingCount} relatorio${pendingCount !== 1 ? 's' : ''} pendente${pendingCount !== 1 ? 's' : ''} do mes de ${monthLabel} para revisao dos profissionais. Esta operacao nao pode ser desfeita em massa.`}
         confirmLabel="Liberar Todos"
         isLoading={releaseAll.isPending}
+      />
+
+      {/* Dialog de confirmacao — Restaurar versao */}
+      <ConfirmDialog
+        open={!!restoreTarget}
+        onClose={() => setRestoreTarget(null)}
+        onConfirm={handleRestoreSnapshot}
+        title={`Restaurar ${restoreTarget?.name}?`}
+        description="Todas as versoes posteriores serao deletadas permanentemente e esta versao se tornara a ativa."
+        confirmLabel="Restaurar"
+        isLoading={restoreSnapshot.isPending}
+      />
+
+      {/* Dialog de confirmacao — Deletar versao */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDeleteSnapshot}
+        title={`Deletar ${deleteTarget?.name}?`}
+        description="Esta versao sera permanentemente removida do historico. Esta acao nao pode ser desfeita."
+        confirmLabel="Deletar"
+        isLoading={deleteSnapshot.isPending}
       />
     </AppLayout>
   );
