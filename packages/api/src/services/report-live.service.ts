@@ -22,6 +22,7 @@ export interface LiveAppointment {
   value: number;
   isPaid: boolean;
   guideNumber: string | null;
+  sourceGone: boolean;
 }
 
 export interface LiveShift {
@@ -127,6 +128,7 @@ export async function buildLiveProfessionalReport(
           ...a,
           isPaid: override?.isPaid ?? a.isPaid,
           guideNumber,
+          sourceGone: false,
         };
       })
       .filter((a): a is NonNullable<typeof a> => a !== null)
@@ -205,6 +207,7 @@ export async function buildLiveProfessionalReport(
         value: Number(a.value),
         isPaid: override?.isPaid ?? false,
         guideNumber: a.guideNumber,
+        sourceGone: a.sourceGone,
       };
     })
     .filter((a): a is LiveAppointment => a !== null)

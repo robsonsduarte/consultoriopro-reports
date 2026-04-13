@@ -281,7 +281,14 @@ function AppointmentsTab({
                 <TableCell>{formatDate(a.date)}</TableCell>
                 <TableCell className="text-muted-foreground tabular-nums">{a.time ? a.time.slice(0, 5) : '—'}</TableCell>
                 <TableCell className="hidden sm:table-cell text-muted-foreground tabular-nums">{a.guideNumber ?? '—'}</TableCell>
-                <TableCell className="font-medium">{a.patientName}</TableCell>
+                <TableCell className="font-medium">
+                  {a.patientName}
+                  {a.sourceGone && (
+                    <Badge variant="outline" className="ml-2 text-xs text-amber-600 border-amber-300 dark:text-amber-400 dark:border-amber-600">
+                      conv. alterado
+                    </Badge>
+                  )}
+                </TableCell>
                 <TableCell className="hidden sm:table-cell text-muted-foreground">
                   {a.operatorName || '—'}
                 </TableCell>

@@ -220,6 +220,7 @@ export async function saveSnapshot(
         value: String(a.value),
         isPaid: a.isPaid,
         isExcluded: false,
+        sourceGone: a.sourceGone ?? false,
       })),
     );
 
@@ -360,6 +361,7 @@ export async function buildProfessionalFromSnapshot(
       value: Number(a.value),
       isPaid: a.isPaid,
       guideNumber: a.guideNumber,
+      sourceGone: a.sourceGone ?? false,
     }))
     .sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? '').localeCompare(b.time ?? ''));
 

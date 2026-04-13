@@ -81,6 +81,7 @@ export interface Appointment {
   value: number;
   isPaid: boolean;
   guideNumber: string | null;
+  sourceGone?: boolean;
 }
 
 export interface OperatorSummary {
@@ -694,6 +695,103 @@ export function useMarkNotificationsRead() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['notifications', 'unread'] });
     },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Hooks de metodos de pagamento
+// ---------------------------------------------------------------------------
+
+export interface PaymentMethod {
+  id: number;
+  userId: number;
+  methodType: 'pix' | 'ted';
+  isPrimary: boolean;
+  pixKeyType: 'cpf' | 'cnpj' | 'email' | 'phone' | 'random' | null;
+  pixKey: string | null;
+  holderName: string | null;
+  holderDocType: string | null;
+  holderDocument: string | null;
+  bankCode: string | null;
+  bankName: string | null;
+  agency: string | null;
+  accountNumber: string | null;
+  accountType: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Bank {
+  id: number;
+  code: string;
+  name: string;
+}
+
+export function usePaymentMethods() {
+  return useQuery({
+    queryKey: ['payment-methods'],
+    queryFn: () =>
+      api.get<ApiResponse<PaymentMethod[]>>('/payment-methods').then((r) => r.data),
+    staleTime: 2 * 60 * 1000,
+  });
+}
+
+export function useBanks() {
+  return useQuery({
+    queryKey: ['banks'],
+    queryFn: () =>
+      api.get<ApiResponse<Bank[]>>('/payment-methods/banks').then((r) => r.data),
+    staleTime: 30 * 60 * 1000,
+  });
+}
+
+export type PaymentMethodInput = {
+  methodType: 'pix' | 'ted';
+  pixKeyType?: string;
+  pixKey?: string;
+  holderName?: string;
+  holderDocType?: string;
+  holderDocument?: string;
+  bankCode?: string;
+  bankName?: string;
+  agency?: string;
+  accountNumber?: string;
+  accountType?: string;
+};
+
+export function useCreatePaymentMethod() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: PaymentMethodInput) =>
+      api.post<ApiResponse<PaymentMethod>>('/payment-methods', input).then((r) => r.data),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['payment-methods'] }); },
+  });
+}
+
+export function useUpdatePaymentMethod() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: PaymentMethodInput & { id: number }) =>
+      api.put<ApiResponse<PaymentMethod>>(`/payment-methods/${id}`, body).then((r) => r.data),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['payment-methods'] }); },
+  });
+}
+
+export function useDeletePaymentMethod() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) =>
+      api.delete<ApiResponse<{ deleted: boolean }>>(`/payment-methods/${id}`).then((r) => r.data),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['payment-methods'] }); },
+  });
+}
+
+export function useSetPrimaryPaymentMethod() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) =>
+      api.patch<ApiResponse<PaymentMethod>>(`/payment-methods/${id}/primary`, {}).then((r) => r.data),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['payment-methods'] }); },
   });
 }
 

@@ -154,6 +154,7 @@ export const reportSnapshotAppointments = pgTable('report_snapshot_appointments'
   value: numeric('value', { precision: 10, scale: 2 }).notNull(),
   isPaid: boolean('is_paid').notNull().default(false),
   isExcluded: boolean('is_excluded').notNull().default(false),
+  sourceGone: boolean('source_gone').notNull().default(false),
 }, (t) => [
   index('idx_snap_appt_snapshot_prof').on(t.snapshotId, t.professionalId),
 ]);
@@ -217,6 +218,7 @@ export const appointmentsMirror = pgTable('appointments_mirror', {
   operatorName: varchar('operator_name', { length: 255 }).notNull().default(''),
   value: numeric('value', { precision: 10, scale: 2 }).notNull().default('0'),
   guideNumber: varchar('guide_number', { length: 100 }),
+  sourceGone: boolean('source_gone').notNull().default(false),
   lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   uniqueIndex('uq_appt_mirror_external').on(t.externalId, t.professionalId),

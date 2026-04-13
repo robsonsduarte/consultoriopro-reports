@@ -191,21 +191,26 @@ export async function syncReport(
               operatorName: appt.operatorName,
               value: String(appt.value),
               guideNumber,
+              sourceGone: false,
               lastSyncedAt: new Date(),
             },
           });
         syncedExternalIds.push(appt.id);
       }
 
-      // Remover appointments que nao vieram mais (deletados no cPanel)
+      // Marcar como ausente da API (soft-delete) em vez de deletar.
+      // Atendimentos podem sumir quando o convenio do paciente muda no cPanel.
       if (syncedExternalIds.length > 0) {
-        await db.delete(appointmentsMirror).where(
-          and(
-            eq(appointmentsMirror.professionalId, professionalId),
-            eq(appointmentsMirror.month, month),
-            notInArray(appointmentsMirror.externalId, syncedExternalIds),
-          ),
-        );
+        await db.update(appointmentsMirror)
+          .set({ sourceGone: true })
+          .where(
+            and(
+              eq(appointmentsMirror.professionalId, professionalId),
+              eq(appointmentsMirror.month, month),
+              eq(appointmentsMirror.sourceGone, false),
+              notInArray(appointmentsMirror.externalId, syncedExternalIds),
+            ),
+          );
       }
 
       // Upsert report_summary_mirror
