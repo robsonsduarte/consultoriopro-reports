@@ -11,6 +11,7 @@ import { ShiftsPage } from '@/pages/shifts/ShiftsPage';
 import { ConfigPage } from '@/pages/config/ConfigPage';
 import { UsersPage } from '@/pages/users/UsersPage';
 import { ReportPage } from '@/pages/report/ReportPage';
+import { PaymentPage } from '@/pages/payment/PaymentPage';
 import type { ReactNode } from 'react';
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
@@ -46,6 +47,7 @@ export function App() {
       <Route path="/shifts/:id" element={<ProtectedRoute><ShiftsPage /></ProtectedRoute>} />
       <Route path="/config" element={<ProtectedRoute><ConfigPage /></ProtectedRoute>} />
       <Route path="/users" element={<ProtectedRoute><UsersPage /></ProtectedRoute>} />
+      <Route path="/payment" element={<ProtectedRoute><PaymentPage /></ProtectedRoute>} />
       <Route path="/report/:id" element={<ProtectedRoute><ReportPage /></ProtectedRoute>} />
 
       {/* Catch-all */}

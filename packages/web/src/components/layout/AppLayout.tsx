@@ -23,7 +23,7 @@ const ADMIN_LINKS: NavLink[] = [
 
 const USER_LINKS: NavLink[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/payment', label: 'Pagamentos', icon: CreditCard },
+  { href: '/payment', label: 'Dados para pagamento', icon: CreditCard },
 ];
 
 interface AppLayoutProps {

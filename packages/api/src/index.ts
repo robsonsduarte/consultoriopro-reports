@@ -16,6 +16,7 @@ import { overridesRouter } from './routes/overrides.js';
 import { notifications } from './routes/notifications.js';
 import { syncRouter } from './routes/sync.js';
 import { snapshots } from './routes/report-snapshots.routes.js';
+import { paymentMethodsRouter } from './routes/payment-methods.js';
 import { startSyncScheduler } from './services/sync-scheduler.js';
 
 const app = new Hono();
@@ -41,6 +42,7 @@ app.route('/overrides', overridesRouter);
 app.route('/notifications', notifications);
 app.route('/sync', syncRouter);
 app.route('/snapshots', snapshots);
+app.route('/payment-methods', paymentMethodsRouter);
 
 // 404
 app.notFound((c) => c.json({ success: false, error: 'Rota nao encontrada' }, 404));

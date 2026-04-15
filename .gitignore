@@ -8,3 +8,9 @@ dist/
 .turbo
 *.tsbuildinfo
 .claude/
+
+# DUOS Framework
+.duos-core/local/
+.claude/settings.local.json
+.DS_Store
+node_modules/
