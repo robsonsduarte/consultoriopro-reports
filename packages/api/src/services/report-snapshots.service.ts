@@ -8,6 +8,7 @@ import {
   professionalsMirror,
   reportReleases,
   professionalConfig,
+  appointmentOverrides,
 } from '../db/schema.js';
 import { buildLiveProfessionalReport, type LiveProfessionalReport } from './report-live.service.js';
 
@@ -351,7 +352,21 @@ export async function buildProfessionalFromSnapshot(
       eq(reportSnapshotShifts.professionalId, professionalId),
     ));
 
+  // Aplica overrides de exclusao sobre o snapshot (snapshot congela atendimentos,
+  // mas exclusoes feitas apos o snapshot devem refletir na view).
+  const overrides = await db
+    .select()
+    .from(appointmentOverrides)
+    .where(and(
+      eq(appointmentOverrides.professionalId, professionalId),
+      eq(appointmentOverrides.month, snapshot.month),
+    ));
+  const excludedSet = new Set(
+    overrides.filter((o) => o.isExcluded).map((o) => o.externalAppointmentId),
+  );
+
   const appointments = appts
+    .filter((a) => !excludedSet.has(a.externalAppointmentId))
     .map((a) => ({
       id: a.externalAppointmentId,
       date: a.date,
@@ -365,12 +380,43 @@ export async function buildProfessionalFromSnapshot(
     }))
     .sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? '').localeCompare(b.time ?? ''));
 
+  // Recalcula summary respeitando exclusoes (preserva taxRate do payload original).
+  const payloadTaxRate = profData.summary.revenue > 0
+    ? (profData.summary.tax / profData.summary.revenue) * 100
+    : payload.taxRate;
+  const revenue = Math.round(appointments.reduce((s, a) => s + a.value, 0) * 100) / 100;
+  const tax = Math.round(revenue * (payloadTaxRate / 100) * 100) / 100;
+  const shiftsValue = profData.summary.shiftsValue;
+  const netValue = Math.round((revenue - tax - shiftsValue) * 100) / 100;
+
+  // Recalcula operators a partir dos atendimentos sobreviventes.
+  const operatorMap = new Map<string, { name: string; appointmentCount: number; totalValue: number }>();
+  for (const a of appointments) {
+    const name = a.operatorName || '—';
+    const existing = operatorMap.get(name);
+    if (existing) {
+      existing.appointmentCount += 1;
+      existing.totalValue += a.value;
+    } else {
+      operatorMap.set(name, { name, appointmentCount: 1, totalValue: a.value });
+    }
+  }
+  const operators = Array.from(operatorMap.values())
+    .map((o) => ({ ...o, totalValue: Math.round(o.totalValue * 100) / 100 }))
+    .sort((a, b) => b.totalValue - a.totalValue);
+
   return {
     professional: profData.professional,
     month: snapshot.month,
-    summary: profData.summary,
+    summary: {
+      revenue,
+      tax,
+      shiftsValue,
+      netValue,
+      totalAppointments: appointments.length,
+    },
     appointments,
-    operators: profData.operators,
+    operators,
     shifts: snapShifts.map((s) => ({
       id: s.id,
       professionalId: s.professionalId,

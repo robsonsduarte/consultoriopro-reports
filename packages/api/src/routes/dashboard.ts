@@ -3,7 +3,7 @@ import { eq, and, sql, inArray } from 'drizzle-orm';
 import { authMiddleware, requireRole, type AuthEnv } from '../middleware/auth.js';
 import { externalApi } from '../services/external-api.js';
 import { db } from '../db/index.js';
-import { reportReleases, shifts, users, professionalsMirror, reportSummaryMirror, appointmentsMirror, appointmentOverrides } from '../db/schema.js';
+import { reportReleases, shifts, users, professionalsMirror, reportSummaryMirror, appointmentsMirror, appointmentOverrides, reportSnapshotAppointments } from '../db/schema.js';
 import {
   getActiveSnapshot,
   buildDashboardFromSnapshot,
@@ -31,10 +31,54 @@ dashboard.get('/professionals', authMiddleware, requireRole('super_admin', 'admi
       .from(reportReleases)
       .where(eq(reportReleases.month, month));
     const releaseMap = new Map(releases.map((r) => [r.professionalId, r]));
+
+    // Aplica overrides de exclusao: subtrai valor dos atendimentos excluidos
+    // do revenue/tax/netValue congelados no snapshot.
+    const snapshotProfIds = data.map((r) => r.id);
+    const overrides = snapshotProfIds.length > 0
+      ? await db.select().from(appointmentOverrides).where(and(
+          eq(appointmentOverrides.month, month),
+          inArray(appointmentOverrides.professionalId, snapshotProfIds),
+        ))
+      : [];
+    const excludedByProf = new Map<number, Set<number>>();
+    for (const o of overrides) {
+      if (!o.isExcluded) continue;
+      const set = excludedByProf.get(o.professionalId) ?? new Set<number>();
+      set.add(o.externalAppointmentId);
+      excludedByProf.set(o.professionalId, set);
+    }
+
+    const hasExclusions = Array.from(excludedByProf.values()).some((s) => s.size > 0);
+    const excludedDeltaByProf = new Map<number, number>();
+    if (hasExclusions) {
+      const snapAppts = await db
+        .select()
+        .from(reportSnapshotAppointments)
+        .where(eq(reportSnapshotAppointments.snapshotId, activeSnapshot.id));
+      for (const a of snapAppts) {
+        const excluded = excludedByProf.get(a.professionalId);
+        if (!excluded?.has(a.externalAppointmentId)) continue;
+        excludedDeltaByProf.set(
+          a.professionalId,
+          (excludedDeltaByProf.get(a.professionalId) ?? 0) + Number(a.value),
+        );
+      }
+    }
+
     const merged = data.map((row) => {
       const release = releaseMap.get(row.id);
+      const delta = excludedDeltaByProf.get(row.id) ?? 0;
+      const origRevenue = row.revenue;
+      const taxRate = origRevenue > 0 ? (row.tax / origRevenue) * 100 : 0;
+      const revenue = Math.round((origRevenue - delta) * 100) / 100;
+      const tax = Math.round(revenue * (taxRate / 100) * 100) / 100;
+      const netValue = Math.round((revenue - tax - row.shiftsValue) * 100) / 100;
       return {
         ...row,
+        revenue,
+        tax,
+        netValue,
         status: release?.status ?? row.status,
         releaseId: release?.id ?? row.releaseId,
         isPaid: release?.isPaid ?? row.isPaid,
